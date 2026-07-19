@@ -1,0 +1,127 @@
+# Local development stack. For production, see docker-compose.prod.yml.
+# All services read shared configuration from ../.env (project root) — the
+# same file Django reads directly when run outside Docker (see
+# backend/config/settings/base.py, which reads PROJECT_ROOT/.env).
+name: united-hrms
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-united_hrms}
+      POSTGRES_USER: ${POSTGRES_USER:-hrms_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hrms_app} -d ${POSTGRES_DB:-united_hrms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../infra/docker/backend.Dockerfile
+      target: local
+    command: python manage.py runserver 0.0.0.0:8000
+    env_file:
+      - ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+    volumes:
+      - ../backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: ../backend
+      dockerfile: ../infra/docker/backend.Dockerfile
+      target: local
+    command: celery -A config worker --loglevel=info -Q default
+    env_file:
+      - ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: ../backend
+      dockerfile: ../infra/docker/backend.Dockerfile
+      target: local
+    command: celery -A config beat --loglevel=info
+    env_file:
+      - ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # --- Telegram Gateway (Phase 7) -----------------------------------------
+  # Its own container, its own Redis, zero access to `db` — no `depends_on:
+  # db` entry exists below, and none should ever be added; see
+  # telegram_gateway/requirements.txt's docstring for why that's structural,
+  # not just a compose-file convention.
+
+  telegram_gateway_redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # No host port published — unlike the backend's `redis` above, nothing
+    # outside this compose network needs to reach this instance directly.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  telegram_gateway:
+    build:
+      context: ../telegram_gateway
+      dockerfile: ../infra/docker/telegram.Dockerfile
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload
+    env_file:
+      - ../.env
+    volumes:
+      - ../telegram_gateway/src:/app/src
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend:
+        condition: service_started
+      telegram_gateway_redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

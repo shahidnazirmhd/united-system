@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Django
+staticfiles/
+media/
+*.sqlite3
+*.sqlite3-journal
+local_settings.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Environment / secrets — never commit real credentials, only the
+# .env.example templates that document what belongs in them.
+.env
+.env.*
+!.env.example
+!telegram_gateway/.env.example
+*.pem
+*.key
+*.p12
+
+# Testing / tooling
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Node (reserved for a future frontend — harmless to ignore now)
+node_modules/
+npm-debug.log*
+
+# AI coding assistant tooling state — not part of the application itself
+.claude/

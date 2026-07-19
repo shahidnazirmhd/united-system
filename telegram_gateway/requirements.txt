@@ -1,0 +1,17 @@
+# Telegram Gateway dependencies — deliberately minimal, and deliberately
+# missing django/djangorestframework/psycopg2/psycopg. That absence is the
+# structural enforcement of "Telegram Gateway must NEVER access PostgreSQL
+# directly" (HRMS_Architecture.md section 7): a violation of that rule
+# would fail to import, not just fail code review. Do not add any ORM or
+# database driver package to this file.
+
+# cryptography (Fernet) removed — Employee & Telegram Authentication
+# refactor deleted auth/token_store.py, the only consumer: this service no
+# longer holds any per-employee credential to encrypt at rest (see
+# auth/account_linking.py's module docstring).
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+httpx==0.27.2
+pydantic==2.9.2
+pydantic-settings==2.5.2
+redis==5.0.8

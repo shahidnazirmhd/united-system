@@ -1,0 +1,16 @@
+-r base.txt
+
+# Testing
+pytest>=8.2,<9.0
+pytest-django>=4.8,<4.9
+pytest-cov>=5.0,<6.0
+
+# Test data
+factory-boy>=3.3,<3.4
+
+# Linting / formatting (see backend/pyproject.toml for configuration)
+black>=24.4,<25.0
+ruff>=0.5,<0.6
+
+# REPL
+ipython>=8.25,<9.0

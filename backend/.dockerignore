@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+staticfiles/
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+# requirements/local.txt is intentionally NOT excluded here (it was, until
+# infra/docker/backend.Dockerfile's `local` stage started needing it in the
+# build context to install pytest/black/ruff for local dev — see that
+# stage's comment). This has no production impact: the `production` stage
+# only ever runs `pip install -r requirements/production.txt`, so this
+# file's mere presence in the build context/image is never acted on there.

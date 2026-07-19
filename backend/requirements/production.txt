@@ -1,0 +1,6 @@
+-r base.txt
+
+# Production intentionally pulls base.txt only — no dev/test tooling (no
+# pytest, no debug/REPL packages) ships in the deployed image, per
+# HRMS_Architecture.md section 9: minimal base images reduce attack surface,
+# particularly for internet-facing containers.
