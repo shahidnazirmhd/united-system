@@ -24,6 +24,13 @@ either, which is why it was here from the start.
 tables, and `Employee.user_id` is a logical reference to `identity.users`)
 but nothing in `apps.identity` was modified to add it, and nothing above
 this dict needed to change either.
+
+`apps.leave` is the second HR business module (Phase 8) — it depends on
+`apps.identity` (its own permission seed migration) and on `apps.employees`
+(through `apps.leave.application.ports.EmployeeLookupPort`, an adapter onto
+`apps.employees`'s already-composed public `EmployeeService`, never that
+module's infrastructure directly), but neither `apps.identity` nor
+`apps.employees` needed a single line changed to support it.
 """
 from __future__ import annotations
 
@@ -31,8 +38,8 @@ ACTIVE_MODULES: list[str] = [
     "apps.healthcheck",
     "apps.identity",
     "apps.employees",
+    "apps.leave",
     # Future HR modules are added here, one line each, e.g.:
-    # "apps.leave",
     # "apps.attendance",
     # "apps.payroll",
     # "apps.performance",
@@ -44,5 +51,5 @@ ACTIVE_MODULES: list[str] = [
 API_MODULE_URL_PREFIXES: dict[str, str] = {
     "auth": "apps.identity",
     "employees": "apps.employees",
-    # "leave": "apps.leave",
+    "leave": "apps.leave",
 }

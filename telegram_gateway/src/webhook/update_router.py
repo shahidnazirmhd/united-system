@@ -14,7 +14,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from src.errors import GatewayError, friendly_message_for
-from src.handlers import link_handler
+from src.handlers import leave_handlers, link_handler
 from src.handlers.context import HandlerContext
 from src.handlers.registry import CommandRegistry
 from src.logging_config import log_event
@@ -35,12 +35,14 @@ class Dependencies:
     itself and the registry — constructed once at process start
     (main.py) and passed through, never re-created per request."""
 
-    __slots__ = ("bot", "linking", "employees")
+    __slots__ = ("bot", "linking", "employees", "leave", "leave_application")
 
-    def __init__(self, *, bot, linking, employees) -> None:
+    def __init__(self, *, bot, linking, employees, leave, leave_application) -> None:
         self.bot = bot
         self.linking = linking
         self.employees = employees
+        self.leave = leave
+        self.leave_application = leave_application
 
 
 async def route(update: TelegramUpdate, deps: Dependencies, registry: CommandRegistry) -> None:
@@ -51,7 +53,14 @@ async def route(update: TelegramUpdate, deps: Dependencies, registry: CommandReg
         # bot handles, and 200-acknowledging all of them is expected.
         return
 
-    ctx = HandlerContext(update=update, bot=deps.bot, linking=deps.linking, employees=deps.employees)
+    ctx = HandlerContext(
+        update=update,
+        bot=deps.bot,
+        linking=deps.linking,
+        employees=deps.employees,
+        leave=deps.leave,
+        leave_application=deps.leave_application,
+    )
 
     log_event(
         logger,
@@ -114,6 +123,15 @@ async def _route_message(ctx: HandlerContext, registry: CommandRegistry) -> None
 
     if link_handler.looks_like_otp(text) and await ctx.linking.is_awaiting_otp(ctx.telegram_user_id):
         await link_handler.handle_otp_reply(ctx)
+        return
+
+    # Apply Leave's multi-step conversation (start date -> end date ->
+    # reason) is free text at every step, unlike the OTP flow's fixed
+    # 6-digit shape — checked after OTP (linking always takes priority; an
+    # employee mid-link has no leave conversation to be mid-way through
+    # anyway) and before falling through to "unknown command."
+    if await ctx.leave_application.is_active(ctx.telegram_user_id):
+        await leave_handlers.handle_apply_leave_free_text(ctx)
         return
 
     await ctx.reply(_UNKNOWN_COMMAND_REPLY)

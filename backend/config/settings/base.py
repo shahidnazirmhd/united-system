@@ -227,6 +227,18 @@ SMTP_TIMEOUT_SECONDS = env.int("SMTP_TIMEOUT_SECONDS", default=10)
 INTERNAL_SERVICE_API_KEY = env("INTERNAL_SERVICE_API_KEY", default="")
 
 # --------------------------------------------------------------------------
+# Leave module (Phase 8)
+#
+# Whether Apply Leave accepts a start_date in the past. Defaults to False —
+# most HR policies require leave to be requested in advance; the rare
+# legitimate exception (retroactively recording an already-taken absence)
+# is an environment-level policy choice, not something every request should
+# be able to opt into individually, so it's a setting rather than a
+# per-request flag.
+# --------------------------------------------------------------------------
+LEAVE_ALLOW_PAST_START_DATE = env.bool("LEAVE_ALLOW_PAST_START_DATE", default=False)
+
+# --------------------------------------------------------------------------
 # Django REST Framework
 # --------------------------------------------------------------------------
 REST_FRAMEWORK = {

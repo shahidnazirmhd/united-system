@@ -3,9 +3,17 @@ from __future__ import annotations
 
 from src.api_client.endpoints.employees import EmployeeProfile
 from src.auth.account_linking import AccountLinkingService
+from src.auth.leave_application import LeaveApplicationService
 from src.handlers import status_handler
 from src.handlers.context import HandlerContext
-from tests.fakes import FakeBotAPIClient, FakeEmployeesEndpoint, FakeRedis, FakeTelegramUpdate, make_hrms_error
+from tests.fakes import (
+    FakeBotAPIClient,
+    FakeEmployeesEndpoint,
+    FakeLeaveEndpoint,
+    FakeRedis,
+    FakeTelegramUpdate,
+    make_hrms_error,
+)
 
 _PROFILE = EmployeeProfile(
     id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
@@ -15,14 +23,21 @@ _PROFILE = EmployeeProfile(
 )
 
 
-async def test_status_shows_concise_status_when_linked():
-    employees = FakeEmployeesEndpoint(profile=_PROFILE)
-    ctx = HandlerContext(
-        update=FakeTelegramUpdate(text="/status"),
+def _ctx(update, employees) -> HandlerContext:
+    leave = FakeLeaveEndpoint()
+    return HandlerContext(
+        update=update,
         bot=FakeBotAPIClient(),
         linking=AccountLinkingService(employees, FakeRedis()),
         employees=employees,
+        leave=leave,
+        leave_application=LeaveApplicationService(leave, FakeRedis()),
     )
+
+
+async def test_status_shows_concise_status_when_linked():
+    employees = FakeEmployeesEndpoint(profile=_PROFILE)
+    ctx = _ctx(FakeTelegramUpdate(text="/status"), employees)
 
     await status_handler.handle_status(ctx)
 
@@ -33,12 +48,7 @@ async def test_status_shows_concise_status_when_linked():
 async def test_status_prompts_to_link_when_not_linked():
     error = make_hrms_error("employee_not_linked_to_telegram", status_code=404)
     employees = FakeEmployeesEndpoint(raise_on_get_profile=error)
-    ctx = HandlerContext(
-        update=FakeTelegramUpdate(text="/status"),
-        bot=FakeBotAPIClient(),
-        linking=AccountLinkingService(employees, FakeRedis()),
-        employees=employees,
-    )
+    ctx = _ctx(FakeTelegramUpdate(text="/status"), employees)
 
     await status_handler.handle_status(ctx)
 

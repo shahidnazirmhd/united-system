@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "United HRMS - Identity + Employees",
-    "description": "Authentication/RBAC (Identity, Phase 5) and Employee CRUD (Employee module, Phase 6) endpoints. Run requests top-to-bottom within each folder. Folder 6 (Employee Management) requires the access_token captured by folder 2's 'Login (Admin)' request, and a department_id \u2014 see that folder's first request for how to get one.",
+    "description": "Authentication/RBAC (Identity, Phase 5), Employee CRUD (Employee module, Phase 6), and Leave Management (Phase 8) endpoints. Run requests top-to-bottom within each folder. Folder 6 (Employee Management) requires the access_token captured by folder 2's 'Login (Admin)' request, and a department_id \u2014 see that folder's first request for how to get one. Folder 7 (Leave Management) additionally requires folder 4 (User Management) to have run first \u2014 see folder 7's first few requests for why.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -72,6 +72,26 @@
     },
     {
       "key": "employee_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "leave_type_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "unpaid_leave_type_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "linked_employee_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "leave_request_id",
       "value": "",
       "type": "string"
     }
@@ -1854,6 +1874,857 @@
                 "exec": [
                   "pm.test(\"Status is 403 insufficient_permission\", function () {",
                   "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Leave Management",
+      "item": [
+        {
+          "name": "List Leave Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/types/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "types"
+              ]
+            },
+            "description": "Any authenticated caller may read this. Captures leave_type_id (ANNUAL) and unpaid_leave_type_id (UNPAID) \u2014 every other request in this folder uses one or the other. Run 'Login (Admin)' (folder 2) first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Seeded leave types present\", function () {",
+                  "    var codes = json.data.map(function(t) { return t.code; });",
+                  "    [\"ANNUAL\", \"SICK\", \"UNPAID\"].forEach(function(c) { pm.expect(codes).to.include(c); });",
+                  "});",
+                  "var annual = json.data.find(function(t) { return t.code === \"ANNUAL\"; });",
+                  "var unpaid = json.data.find(function(t) { return t.code === \"UNPAID\"; });",
+                  "pm.collectionVariables.set(\"leave_type_id\", annual.id);",
+                  "pm.collectionVariables.set(\"unpaid_leave_type_id\", unpaid.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Leave Balance - As Admin (not linked, should fail)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/balance/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "balance",
+                "me"
+              ]
+            },
+            "description": "The admin user isn't linked to an Employee record via user_id (same reasoning TESTING_GUIDE.md's Part D3 documents for GET /employees/me/) \u2014 expected, not a bug. The requests below link a *different* user to a real Employee so the rest of this folder can exercise the real self-service happy path.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404 employee_not_found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"employee_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Employee Linked To New User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees"
+              ]
+            },
+            "description": "Requires folder '4. User Management (Admin)' to have already run (needs new_user_id) and folder '6. Employee Management' to have set department_id. There's no dedicated 'link user' endpoint \u2014 user_id is only settable at Employee creation time (CreateEmployeeSerializer), so this creates a second Employee specifically to get a real linked account. Captures linked_employee_id; every following request in this folder authenticates as new_user_access_token (captured by folder 4's 'Login as New User') to exercise the real self-service Leave flow as this employee.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Grace\",\n  \"last_name\": \"Hopper\",\n  \"work_email\": \"grace.hopper@example.com\",\n  \"department_id\": \"{{department_id}}\",\n  \"job_title\": \"Systems Engineer\",\n  \"employment_type\": \"full_time\",\n  \"date_of_joining\": \"2024-02-01\",\n  \"user_id\": \"{{new_user_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set(\"linked_employee_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Leave Balance - As Linked Employee",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/balance/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "balance",
+                "me"
+              ]
+            },
+            "description": "Requires 'Login as New User' (folder 4) to have run, and 'Create Employee Linked To New User' above. Confirms EmployeeCreated auto-provisioning (apps/leave/apps.py) gave this employee a balance row per active leave type with no manual seeding step.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Annual Leave balance auto-provisioned\", function () {",
+                  "    var annual = json.data.find(function(b) { return b.leave_type_name === \"Annual Leave\"; });",
+                  "    pm.expect(annual).to.exist;",
+                  "    pm.expect(annual.entitled_days).to.eql(\"20.00\");",
+                  "    pm.expect(annual.used_days).to.eql(\"0.00\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "Always applies on the caller's own behalf, always creates status=pending (no approval workflow yet \u2014 Phase 8). Captures leave_request_id for the rest of this folder.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-09-01\",\n  \"end_date\": \"2026-09-03\",\n  \"reason\": \"Family trip\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"status is pending\", function () { pm.expect(json.data.status).to.eql(\"pending\"); });",
+                  "pm.test(\"total_days is 3.00\", function () { pm.expect(json.data.total_days).to.eql(\"3.00\"); });",
+                  "pm.collectionVariables.set(\"leave_request_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave - Invalid Date Range (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "end_date before start_date.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-09-10\",\n  \"end_date\": \"2026-09-05\",\n  \"reason\": \"Bad range\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 invalid_leave_date_range\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"invalid_leave_date_range\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave - Duplicate (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "Must run AFTER 'Apply Leave' \u2014 identical employee/leave type/dates as that request, proves the duplicate-prevention rule.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-09-01\",\n  \"end_date\": \"2026-09-03\",\n  \"reason\": \"Family trip\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 duplicate_leave_request\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"duplicate_leave_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave - Overlapping Dates (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "A DIFFERENT leave type (Unpaid) than the still-pending Annual Leave request above, but an overlapping date \u2014 proves the overlap rule applies across leave types, not just within one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{unpaid_leave_type_id}}\",\n  \"start_date\": \"2026-09-02\",\n  \"end_date\": \"2026-09-02\",\n  \"reason\": \"Overlap check\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 overlapping_leave_request\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"overlapping_leave_request\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave - Insufficient Balance (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "Unpaid Leave seeds with default_annual_days=0.00, and these dates don't overlap the pending Annual Leave request above, so this reaches the balance check and fails there \u2014 proves sufficiency is checked, not just existence, of a balance row.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{unpaid_leave_type_id}}\",\n  \"start_date\": \"2026-10-01\",\n  \"end_date\": \"2026-10-01\",\n  \"reason\": \"Balance check\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 insufficient_leave_balance\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"insufficient_leave_balance\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "View Leave History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "Accepts ?status=, ?page=, ?page_size=. Caller's own history only.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Contains the applied request\", function () {",
+                  "    var ids = pm.response.json().data.map(function(r) { return r.id; });",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get(\"leave_request_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Leave Request Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{leave_request_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{leave_request_id}}"
+              ]
+            },
+            "description": "The caller's own, or any employee's if the caller holds leave.view_leave.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Matches applied request\", function () {",
+                  "    pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get(\"leave_request_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Leave Request - Not Found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/00000000-0000-0000-0000-000000000000/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404 leave_request_not_found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"leave_request_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Employee Leave Balance (HR oversight)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/balance/{{linked_employee_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "balance",
+                "{{linked_employee_id}}"
+              ]
+            },
+            "description": "Requires leave.view_leave (HR Admin has it by default) \u2014 the HR/manager-oversight counterpart to 'My Leave Balance', for viewing someone else's balance.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Employee Leave Balance - As Non-Admin (should fail)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/balance/{{linked_employee_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "balance",
+                "{{linked_employee_id}}"
+              ]
+            },
+            "description": "Even though linked_employee_id happens to be the caller's own employee record, this endpoint is gated purely by leave.view_leave at the view level (see apps/leave/interface/views.py's EmployeeLeaveBalanceView) \u2014 self-access to your own balance is what 'My Leave Balance' is for; this HR-oversight endpoint requires the permission regardless of whose data is requested.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403 insufficient_permission\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel Leave Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{leave_request_id}}/cancel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{leave_request_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Valid from pending or approved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cancellation_reason\": \"No longer needed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"status is cancelled\", function () { pm.expect(pm.response.json().data.status).to.eql(\"cancelled\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel Leave Request - Already Cancelled (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{leave_request_id}}/cancel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{leave_request_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Must run AFTER 'Cancel Leave Request' \u2014 this request is already cancelled/rejected/draft, nothing to cancel.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cancellation_reason\": \"Trying again\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 leave_request_not_cancellable\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"leave_request_not_cancellable\");",
                   "});"
                 ]
               }

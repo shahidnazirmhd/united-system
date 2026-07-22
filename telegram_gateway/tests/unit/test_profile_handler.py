@@ -1,8 +1,12 @@
 """Unit tests for handlers/profile_handler.py."""
 from __future__ import annotations
 
+import pytest
+
 from src.api_client.endpoints.employees import EmployeeProfile
 from src.auth.account_linking import AccountLinkingService
+from src.auth.leave_application import LeaveApplicationService
+from src.errors import TelegramAPIError
 from src.handlers import profile_handler
 from src.handlers.context import HandlerContext
 from tests.fakes import (
@@ -10,6 +14,7 @@ from tests.fakes import (
     FakeCallbackMessage,
     FakeCallbackQuery,
     FakeEmployeesEndpoint,
+    FakeLeaveEndpoint,
     FakeRedis,
     FakeTelegramUpdate,
     make_hrms_error,
@@ -23,12 +28,15 @@ _PROFILE = EmployeeProfile(
 )
 
 
-def _build_context(update, employees) -> HandlerContext:
+def _build_context(update, employees, *, bot=None) -> HandlerContext:
+    leave = FakeLeaveEndpoint()
     return HandlerContext(
         update=update,
-        bot=FakeBotAPIClient(),
+        bot=bot or FakeBotAPIClient(),
         linking=AccountLinkingService(employees, FakeRedis()),
         employees=employees,
+        leave=leave,
+        leave_application=LeaveApplicationService(leave, FakeRedis()),
     )
 
 
@@ -72,3 +80,44 @@ async def test_profile_refresh_callback_edits_the_existing_message():
     assert len(ctx.bot.edited_messages) == 1
     assert ctx.bot.edited_messages[0]["message_id"] == 99
     assert "Ada Lovelace" in ctx.bot.edited_messages[0]["text"]
+
+
+async def test_profile_refresh_swallows_message_not_modified_error():
+    """Regression test: tapping Refresh when the card's content hasn't
+    changed used to bubble a TelegramAPIError ("message is not modified")
+    all the way up to update_router's generic "Something went wrong"
+    reply, even though nothing was actually wrong. The callback should
+    still be answered (so the button's spinner stops) and the handler
+    should complete without raising or sending any error message."""
+    bot = FakeBotAPIClient(
+        raise_on_edit_message=TelegramAPIError(
+            "Telegram editMessageText failed: Bad Request: message is not modified",
+            description="Bad Request: message is not modified",
+        )
+    )
+    update = FakeTelegramUpdate(
+        callback_data="profile:refresh", callback_query=FakeCallbackQuery(id="cb-1", message=FakeCallbackMessage(message_id=99))
+    )
+    ctx = _build_context(update, FakeEmployeesEndpoint(profile=_PROFILE), bot=bot)
+
+    await profile_handler.handle_profile_refresh(ctx)
+
+    assert len(ctx.bot.answered_callbacks) == 1
+    assert ctx.bot.edited_messages == []
+    assert ctx.bot.sent_messages == []
+
+
+async def test_profile_refresh_reraises_genuine_telegram_errors():
+    """A real Telegram failure (as opposed to the harmless "not modified"
+    case above) must still surface — update_router's top-level handler is
+    what turns it into a "Something went wrong" reply."""
+    bot = FakeBotAPIClient(
+        raise_on_edit_message=TelegramAPIError("Telegram editMessageText failed: chat not found", description="chat not found")
+    )
+    update = FakeTelegramUpdate(
+        callback_data="profile:refresh", callback_query=FakeCallbackQuery(id="cb-1", message=FakeCallbackMessage(message_id=99))
+    )
+    ctx = _build_context(update, FakeEmployeesEndpoint(profile=_PROFILE), bot=bot)
+
+    with pytest.raises(TelegramAPIError):
+        await profile_handler.handle_profile_refresh(ctx)

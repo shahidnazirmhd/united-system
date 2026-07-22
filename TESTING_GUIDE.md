@@ -1,6 +1,6 @@
-# United HRMS — Full System Testing Guide (Phase 1–7)
+# United HRMS — Full System Testing Guide (Phase 1–8)
 
-This is a from-scratch runbook: clean checkout → running stack → Identity/Employee flows verified → Telegram Gateway wired up and tested against a real Telegram bot. Follow it top to bottom the first time; the sections are also usable independently once your stack is already running.
+This is a from-scratch runbook: clean checkout → running stack → Identity/Employee flows verified → Telegram Gateway wired up and tested against a real Telegram bot, including Phase 8's Leave Management module end to end (REST + real Telegram bot commands). Follow it top to bottom the first time; the sections are also usable independently once your stack is already running.
 
 Tools assumed: **VS Code**, **Docker Desktop**, **Postman**, a **Telegram account** on your phone or desktop, and (for the Telegram part only) **ngrok** — Telegram's servers need a public HTTPS URL to call, and `localhost` isn't reachable from the internet.
 
@@ -41,7 +41,7 @@ docker compose -f infra/docker-compose.yml --env-file .env build backend
 docker compose -f infra/docker-compose.yml --env-file .env up -d db redis
 docker compose -f infra/docker-compose.yml --env-file .env run --rm backend pytest
 ```
-Expect all tests to pass. If anything fails, stop here and share the output before continuing.
+Expect all tests to pass. As of Phase 8 (Leave Management), this includes `apps/leave/tests/unit/` (domain entities, `LeaveValidationService`, `LeaveBalanceService`, `LeaveRequestService` — pure application-layer tests, no database) and `apps/leave/tests/integration/test_leave_endpoints.py` (real Postgres, full HTTP stack). If anything fails, stop here and share the output before continuing.
 
 ### B2. Telegram Gateway test suite
 The gateway's tests need no database and no Docker — a plain local virtual environment is fastest, and lets you use VS Code's Test Explorer too if you want.
@@ -54,7 +54,7 @@ Activate it — **Windows cmd.exe**: `.venv\Scripts\activate.bat`; **Windows Pow
 pip install -r requirements-dev.txt
 pytest
 ```
-Expect `84 passed`. Deactivate and `cd ..` back to the project root when done (`deactivate`).
+Expect `129 passed`. As of Phase 8, this includes `tests/unit/test_leave_application.py` (the `/apply_leave` multi-step conversation state machine), `tests/unit/test_leave_handlers.py` (every Leave command and callback, plus a full end-to-end conversation routed through `update_router.route()`), and the Leave-related additions to `test_registry.py` (the new `callback_prefix()` matching), `test_update_router.py`, and every other handler test file (each now wires a `leave=`/`leave_application=` fake into `HandlerContext`). It also includes regression tests for two profile-card bugs fixed post-launch: the "🔄 Refresh" button no longer surfaces a false "Something went wrong" when the card's content hasn't changed (`test_profile_handler.py`), and the "🔓 Unlink account" button's callback_data now actually routes to a registered handler (`test_link_handler.py`, `test_keyboards.py`, `test_update_router.py`). Deactivate and `cd ..` back to the project root when done (`deactivate`).
 
 ---
 
@@ -74,7 +74,7 @@ Look for Django's dev server banner ("Starting development server at http://0.0.
 ```bash
 docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py migrate
 ```
-You should see a list of `Applying ... OK` lines, including the seed migrations (`0002_seed_system_roles`, `0002_seed_employee_permissions`, `0003_seed_default_departments`) and the Telegram-linking migrations (`apps.employees`'s `0004_add_telegram_linking`, which adds the `telegram_*` fields and link-token table to Employee; `apps.identity`'s `0004_drop_telegram_tables`, which removes the old Identity-side Telegram tables from an earlier phase; and `apps.employees`'s `0005_add_link_token_attempt_count`, which adds the OTP brute-force lockout counter from the post-milestone error-handling review). No errors.
+You should see a list of `Applying ... OK` lines, including the seed migrations (`0002_seed_system_roles`, `0002_seed_employee_permissions`, `0003_seed_default_departments`) and the Telegram-linking migrations (`apps.employees`'s `0004_add_telegram_linking`, which adds the `telegram_*` fields and link-token table to Employee; `apps.identity`'s `0004_drop_telegram_tables`, which removes the old Identity-side Telegram tables from an earlier phase; and `apps.employees`'s `0005_add_link_token_attempt_count`, which adds the OTP brute-force lockout counter from the post-milestone error-handling review). Phase 8 adds `apps.leave`'s three migrations: `0001_initial` (`leave_types`/`leave_balances`/`leave_requests` tables), `0002_seed_leave_permissions` (`leave.view_leave`/`leave.manage_leave`, granted to HR Admin/Manager), and `0003_seed_default_leave_types` (seeds `ANNUAL`/`SICK`/`UNPAID`). No errors.
 
 ### C2. Health check
 Open `http://localhost:8000/health/` in a browser, or:
@@ -114,7 +114,14 @@ Authorization: Bearer {{access_token}}
 ```
 Since the admin user isn't itself linked to an employee record via `user_id`, expect `404 employee_not_found` — that's correct (only a `User` explicitly linked to an `Employee` via `user_id` should see this succeed). Note this is a different, JWT-authenticated endpoint from the Telegram-facing profile lookup exercised in Part H (`GET /employees/telegram/profile/`, authenticated via the internal service key and keyed by `telegram_user_id` instead) — linking via Telegram in Part H does not make this endpoint start succeeding, by design (see `EMPLOYEE_API.md`'s "Telegram linking" section for why the two are intentionally separate).
 
-If everything in Parts B–D passed, the pre-existing system (Phases 1–6) is confirmed working end to end, and you can move on to the new part.
+### D4. Leave Management REST surface (Phase 8)
+`United_HRMS.postman_collection.json`'s **`7. Leave Management`** folder covers this — run it top to bottom after folders `2`, `4`, and `6` (it needs `access_token`, `new_user_id`/`new_user_access_token`, and `department_id`, all captured by those earlier folders).
+
+There's no dedicated "link a User to an Employee" endpoint (`user_id` is only settable at `POST /employees/` creation time), so the folder's `Create Employee Linked To New User` request creates a **second** employee (Grace Hopper) with `user_id: {{new_user_id}}` specifically so the rest of the folder can authenticate as `new_user_access_token` and exercise the real self-service Leave flow — apply, duplicate/overlap/insufficient-balance rejections, history, detail, and cancel — against an account that's actually linked, rather than the admin account (which, like `/employees/me/` in D3, 404s `employee_not_found` on every self-service Leave endpoint since it isn't linked to any Employee). The folder also confirms auto-provisioning: `My Leave Balance - As Linked Employee` checks that Grace's balance rows exist with no manual seeding step, from `apps/leave/apps.py`'s subscription to the `EmployeeCreated` event.
+
+Full request/response shapes and every error code are documented in `LEAVE_API.md`. The Telegram-facing surface (`/leave/telegram/...`) is exercised for real in Part H2 below rather than via Postman, since it's the Gateway's job to call it, not a human's.
+
+If everything in Parts B–D passed, the pre-existing system (Phases 1–6) plus Phase 8's Leave REST surface are confirmed working, and you can move on to the new part.
 
 ---
 
@@ -250,6 +257,40 @@ Authorization: Bearer {{access_token}}
 docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c "from apps.employees.infrastructure.models import EmployeeRecord; e = EmployeeRecord.objects.get(employee_code='EMP-000001'); print(e.telegram_user_id, e.telegram_username, e.telegram_linked_at, e.user_id)"
 ```
 `user_id` in that last column should print `None`.
+
+---
+
+## Part H2 — Real end-to-end Leave testing via Telegram (Phase 8)
+
+Continue in the same chat as Part H — you should still be linked (if you ran the `/unlink` steps at the end of Part H's table, send `/link EMP-000001` and re-verify with the OTP before continuing). Full command reference and the Apply Leave flow diagram: `TELEGRAM_GATEWAY.md` §3b.
+
+| You send | Expect |
+|---|---|
+| `/leave_balance` (or "💰 Leave Balance") | One line per active leave type — `Annual Leave: 20.00 available (0.00 used)`-style — from the auto-provisioned balances confirmed in D4.3 |
+| `/leave_types` | A list of `Annual Leave`, `Sick Leave`, `Unpaid Leave` with their default annual days |
+| `/apply_leave` (or "📝 Apply Leave") | An inline keyboard, one button per leave type |
+| Tap **Annual Leave** | "Got it. What's the *start date*? Send it as YYYY-MM-DD." |
+| Send `2026-09-01` | "And the *end date*? Send it as YYYY-MM-DD." |
+| Send `2026-09-03` | "Want to add a reason? Send it, or reply \"skip\"." |
+| Send `skip` | "*Please confirm your leave application:*" summary (type, dates, "📝 Reason: _(none)_") with **Confirm**/**Cancel** buttons |
+| Tap **Confirm** | "✅ Your leave request has been submitted and is *🟡 Pending*." plus dates and a request id — note the id, you'll need it below |
+| `/leave_balance` again | `Pending requests: 3 days` now reflects the days just applied for; `Available` is unchanged (the balance gate is applied at apply time, not shown as already-deducted — see `LEAVE_API.md`'s balance note) |
+| `/leave_history` | Shows the request you just submitted, "🟡 Pending" |
+| `/leave_request <id>` (the id from the submit confirmation) | "*Leave Request Details*" card for that one request |
+| `/cancel_leave` | An inline keyboard listing your `pending`/`approved` requests |
+| Tap the request you just submitted | "Cancel this request?" with its summary line |
+| Tap **Confirm** | "🚫 Leave request `<id>` has been cancelled."; a repeat `/leave_history` now shows "⚫ Cancelled" |
+
+### Leave error-path checks worth doing too
+- `/apply_leave` → pick a type → send `2026-09-01` then `2026-08-25` (end before start) → `invalid_leave_date_range`'s friendly message, and the conversation stays on the end-date step (doesn't silently advance)
+- `/apply_leave` → send a start date that isn't `YYYY-MM-DD` (e.g. `next monday`) → a friendly "I couldn't understand that date" reply, step doesn't advance (`InvalidLeaveDateInputError`)
+- Apply for the same exact type + dates twice in a row → the second attempt gets `duplicate_leave_request`'s friendly message on Confirm
+- Apply for overlapping dates under a *different* leave type while the first request is still `pending` → `overlapping_leave_request`
+- Apply for more days than your remaining balance allows → `insufficient_leave_balance`
+- Start `/apply_leave`, pick a type, then tap **Cancel** at the final confirmation step instead of Confirm → "No leave application was submitted." and `/apply_leave` can be started fresh immediately (state was cleared, not left dangling)
+- Send free text (e.g. a stray word) while **not** mid-`/apply_leave`, and while not mid-OTP-linking → falls through to "I didn't understand that." (proves the free-text routing in `update_router.py` correctly falls through when neither conversation is active)
+- `/cancel_leave` when you have no `pending`/`approved` requests (e.g. right after a fresh account, or after cancelling everything) → a friendly "nothing to cancel" message, no empty keyboard shown
+- `/leave_request <a made-up id>` → `leave_request_not_found`'s friendly message
 
 ---
 

@@ -50,6 +50,7 @@ class CommandRegistry:
     def __init__(self) -> None:
         self._commands: dict[str, RegisteredHandler] = {}
         self._callbacks: dict[str, RegisteredHandler] = {}
+        self._callback_prefixes: dict[str, RegisteredHandler] = {}
 
     def command(
         self, name: str, *, menu_label: str | None = None, menu_order: int = 100
@@ -74,6 +75,33 @@ class CommandRegistry:
 
         return decorator
 
+    def callback_prefix(self, prefix: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        """Registers an inline-keyboard callback handler keyed by a PREFIX
+        rather than an exact string — for buttons whose callback_data
+        embeds a value chosen at render time (a leave type id, a leave
+        request id), which `callback()`'s exact-match dict can't express.
+        E.g. `@registry.callback_prefix("leave:apply:type:")` matches
+        callback_data "leave:apply:type:018f..." for any id. The handler
+        itself parses the id back out of `ctx.update.callback_data` — that
+        parsing is the handler's own business, not this registry's; this
+        method's only job is finding the right function to call.
+
+        Introduced for Leave (Phase 8's Telegram integration) — every
+        existing callback (`profile:refresh`, `account:unlink_confirmed`,
+        ...) still goes through the exact-match `callback()` path above and
+        is unaffected. Prefixes are expected not to collide (e.g.
+        "leave:apply:type:" vs. "leave:cancel:select:" share no common
+        prefix); `get_callback` picks the longest matching prefix if more
+        than one happens to match, so a more specific prefix registered
+        alongside a shorter, more general one still resolves correctly.
+        """
+
+        def decorator(func: HandlerFunc) -> HandlerFunc:
+            self._callback_prefixes[prefix] = RegisteredHandler(name=prefix, func=func)
+            return func
+
+        return decorator
+
     def get_command(self, name: str) -> RegisteredHandler | None:
         return self._commands.get(name)
 
@@ -89,7 +117,14 @@ class CommandRegistry:
         return None
 
     def get_callback(self, data: str) -> RegisteredHandler | None:
-        return self._callbacks.get(data)
+        exact = self._callbacks.get(data)
+        if exact is not None:
+            return exact
+        matching_prefixes = [p for p in self._callback_prefixes if data.startswith(p)]
+        if not matching_prefixes:
+            return None
+        longest = max(matching_prefixes, key=len)
+        return self._callback_prefixes[longest]
 
     def menu_entries(self) -> list[tuple[str, MenuEntry]]:
         """(command_name, MenuEntry) pairs for every command that opted

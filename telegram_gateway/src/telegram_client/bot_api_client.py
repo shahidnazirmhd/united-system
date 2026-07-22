@@ -83,13 +83,14 @@ class BotAPIClient:
 
         body = response.json()
         if not body.get("ok", False):
+            description = body.get("description")
             log_event(
                 logger,
                 logging.ERROR,
                 "telegram_api_error_response",
                 method=method,
                 status_code=response.status_code,
-                description=body.get("description"),
+                description=description,
             )
-            raise TelegramAPIError(f"Telegram {method} failed: {body.get('description')}")
+            raise TelegramAPIError(f"Telegram {method} failed: {description}", description=description)
         return body.get("result", {})

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from src.api_client.endpoints.employees import EmployeeProfile, TelegramLinkStatus
 from src.auth.account_linking import AccountLinkingService
+from src.auth.leave_application import LeaveApplicationService
 from src.handlers import link_handler
 from src.handlers.context import HandlerContext
 from tests.fakes import (
     FakeBotAPIClient,
     FakeCallbackQuery,
     FakeEmployeesEndpoint,
+    FakeLeaveEndpoint,
     FakeRedis,
     FakeTelegramUpdate,
     make_hrms_error,
@@ -28,11 +30,14 @@ _UNLINKED_STATUS = TelegramLinkStatus(is_linked=False, telegram_username=None, l
 
 def _context(update, *, employees=None, redis=None) -> HandlerContext:
     employees = employees or FakeEmployeesEndpoint()
+    leave = FakeLeaveEndpoint()
     return HandlerContext(
         update=update,
         bot=FakeBotAPIClient(),
         linking=AccountLinkingService(employees, redis or FakeRedis()),
         employees=employees,
+        leave=leave,
+        leave_application=LeaveApplicationService(leave, FakeRedis()),
     )
 
 
@@ -152,3 +157,35 @@ async def test_unlink_cancelled_leaves_session_intact():
     await link_handler.handle_unlink_cancelled(ctx)
 
     assert "No changes made" in ctx.bot.sent_messages[-1]["text"]
+
+
+async def test_unlink_prompt_callback_shows_confirmation_when_linked():
+    """The "🔓 Unlink account" button on the My Profile card
+    (`account:unlink_prompt`) must reach the same confirmation step as the
+    /unlink slash command — not skip straight to unlinking."""
+    employees = FakeEmployeesEndpoint(link_status=_LINKED_STATUS)
+    ctx = _context(
+        FakeTelegramUpdate(callback_data="account:unlink_prompt", callback_query=FakeCallbackQuery()),
+        employees=employees,
+    )
+
+    await link_handler.handle_unlink_prompt_callback(ctx)
+
+    assert len(ctx.bot.answered_callbacks) == 1
+    sent = ctx.bot.sent_messages[-1]
+    assert "Are you sure" in sent["text"]
+    assert sent["reply_markup"] is not None
+    assert employees.unlink_calls == []  # confirmation only, backend not called yet
+
+
+async def test_unlink_prompt_callback_replies_not_linked_when_unlinked():
+    employees = FakeEmployeesEndpoint(link_status=_UNLINKED_STATUS)
+    ctx = _context(
+        FakeTelegramUpdate(callback_data="account:unlink_prompt", callback_query=FakeCallbackQuery()),
+        employees=employees,
+    )
+
+    await link_handler.handle_unlink_prompt_callback(ctx)
+
+    assert len(ctx.bot.answered_callbacks) == 1
+    assert "isn't linked" in ctx.bot.sent_messages[-1]["text"]

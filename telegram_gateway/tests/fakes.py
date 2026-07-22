@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.api_client.endpoints.employees import EmployeeProfile, TelegramLinkStatus
+from src.api_client.endpoints.leave import LeaveHistoryPage
 from src.errors import HRMSAPIError
 
 
@@ -117,17 +118,95 @@ class FakeEmployeesEndpoint:
         return self.link_status or TelegramLinkStatus(is_linked=False, telegram_username=None, linked_at=None)
 
 
+@dataclass
+class FakeLeaveEndpoint:
+    """Configurable success/failure per method, same convention as
+    `FakeEmployeesEndpoint` — tests set `raise_on_*`/return values before
+    calling, rather than this class modeling the backend's actual
+    validation rules (that's the backend's own test suite's job)."""
+
+    types: list = field(default_factory=list)
+    balances: list = field(default_factory=list)
+    history: LeaveHistoryPage | None = None
+    detail: object | None = None
+    apply_result: object | None = None
+    cancel_result: object | None = None
+
+    raise_on_list_types: Exception | None = None
+    raise_on_get_balances: Exception | None = None
+    raise_on_get_history: Exception | None = None
+    raise_on_get_detail: Exception | None = None
+    raise_on_apply: Exception | None = None
+    raise_on_cancel: Exception | None = None
+
+    apply_calls: list[dict] = field(default_factory=list)
+    cancel_calls: list[dict] = field(default_factory=list)
+    detail_calls: list[dict] = field(default_factory=list)
+    history_calls: list[dict] = field(default_factory=list)
+
+    async def list_types(self):
+        if self.raise_on_list_types is not None:
+            raise self.raise_on_list_types
+        return self.types
+
+    async def get_balances(self, *, telegram_user_id, year=None):
+        if self.raise_on_get_balances is not None:
+            raise self.raise_on_get_balances
+        return self.balances
+
+    async def get_history(self, *, telegram_user_id, status=None, page=1, page_size=5):
+        self.history_calls.append({"telegram_user_id": telegram_user_id, "status": status, "page": page})
+        if self.raise_on_get_history is not None:
+            raise self.raise_on_get_history
+        return self.history or LeaveHistoryPage(items=[], page=page, page_size=page_size, total_count=0, total_pages=1)
+
+    async def get_detail(self, *, telegram_user_id, leave_request_id):
+        self.detail_calls.append({"telegram_user_id": telegram_user_id, "leave_request_id": leave_request_id})
+        if self.raise_on_get_detail is not None:
+            raise self.raise_on_get_detail
+        return self.detail
+
+    async def apply(self, *, telegram_user_id, leave_type_id, start_date, end_date, reason):
+        self.apply_calls.append(
+            {
+                "telegram_user_id": telegram_user_id,
+                "leave_type_id": leave_type_id,
+                "start_date": start_date,
+                "end_date": end_date,
+                "reason": reason,
+            }
+        )
+        if self.raise_on_apply is not None:
+            raise self.raise_on_apply
+        return self.apply_result
+
+    async def cancel(self, *, telegram_user_id, leave_request_id, cancellation_reason):
+        self.cancel_calls.append(
+            {
+                "telegram_user_id": telegram_user_id,
+                "leave_request_id": leave_request_id,
+                "cancellation_reason": cancellation_reason,
+            }
+        )
+        if self.raise_on_cancel is not None:
+            raise self.raise_on_cancel
+        return self.cancel_result
+
+
 class FakeBotAPIClient:
-    def __init__(self) -> None:
+    def __init__(self, *, raise_on_edit_message: Exception | None = None) -> None:
         self.sent_messages: list[dict] = []
         self.edited_messages: list[dict] = []
         self.answered_callbacks: list[dict] = []
+        self.raise_on_edit_message = raise_on_edit_message
 
     async def send_message(self, *, chat_id, text, reply_markup=None, parse_mode="Markdown"):
         self.sent_messages.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
         return {"message_id": len(self.sent_messages)}
 
     async def edit_message_text(self, *, chat_id, message_id, text, reply_markup=None, parse_mode="Markdown"):
+        if self.raise_on_edit_message is not None:
+            raise self.raise_on_edit_message
         self.edited_messages.append(
             {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": reply_markup}
         )

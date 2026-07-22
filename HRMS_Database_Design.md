@@ -85,7 +85,9 @@ erDiagram
 
     %% ===== leave schema =====
     LEAVE_TYPES ||--o{ LEAVE_BALANCES : "typed by"
+    LEAVE_TYPES ||--o{ LEAVE_REQUESTS : "typed by"
     EMPLOYEES ||..o{ LEAVE_BALANCES : "logical, no FK"
+    EMPLOYEES ||..o{ LEAVE_REQUESTS : "logical, no FK"
 
     LEAVE_TYPES {
         uuid id PK
@@ -96,6 +98,15 @@ erDiagram
         uuid employee_id UK "logical, no FK"
         uuid leave_type_id UK,FK
         smallint year UK
+    }
+    LEAVE_REQUESTS {
+        uuid id PK
+        uuid employee_id "logical, no FK"
+        uuid leave_type_id FK
+        date start_date
+        date end_date
+        varchar status
+        uuid approved_by "logical, no FK — Approval module extension point"
     }
 
     %% ===== approvals schema (polymorphic, generic) =====
@@ -144,7 +155,9 @@ Note that `AUDIT_LOG` has no drawn relationships at all — that's intentional, 
 
 **`leave.leave_types`** — a small lookup table (Annual, Sick, Unpaid, ...) rather than a hardcoded set of strings scattered across the codebase, so HR can add a new leave type as a data change, not a deployment.
 
-**`leave.leave_balances`** — the per-employee, per-leave-type, per-year entitlement/usage record. This is balance *state*, not leave *requests* — request history and workflow live in the (not-yet-scoped) Leave Request table, which will reference this table's rows once built, again without this table needing to change.
+**`leave.leave_balances`** — the per-employee, per-leave-type, per-year entitlement/usage record. This is balance *state*, not leave *requests* — request history and workflow live in `leave.leave_requests` (below).
+
+**`leave.leave_requests`** — Phase 8. One row per leave application: the requested date range, the derived `total_days`, `status` (`draft`/`pending`/`approved`/`rejected`/`cancelled`), and four columns (`approved_by`, `decided_at`, `decision_comments`, plus `cancelled_at`/`cancellation_reason`) that exist specifically as the not-yet-built Approval module's integration point — see §3.3 and `HRMS_Architecture.md`'s Phase 8 notes for why these are added now rather than via a future migration. Deliberately does **not** reference `leave_balances` by FK: `used_days` on the balance row is only updated when a request is approved (`LeaveRequestService.approve()`), not at application time, so the two tables stay independently correct rather than needing a join to reconcile.
 
 **`approvals.approval_workflows`** — one row per thing currently going through approval, identified polymorphically by `subject_type` + `subject_id` (e.g., `'leave_request'` + a UUID) rather than by a foreign key to any specific business table. This is the concrete implementation of the "generic approval engine, no knowledge of leave or payroll as concepts" decision already made in `HRMS_Architecture.md` §3.
 
@@ -297,6 +310,30 @@ Employee & Telegram Authentication refactor — moved from (removed) `identity.t
 
 UNIQUE (`employee_id`, `leave_type_id`, `year`).
 
+#### `leave.leave_requests` (Phase 8)
+
+| Column | Type | Nullable | Default | Key / Constraint |
+|---|---|---|---|---|
+| id | UUID | NO | `uuid_generate_v7()` | PK |
+| employee_id | UUID | NO | — | logical ref → `employees.employees.id`, no FK — cross-schema |
+| leave_type_id | UUID | NO | — | FK → `leave_types.id` ON DELETE RESTRICT |
+| start_date | DATE | NO | — | |
+| end_date | DATE | NO | — | CHECK `end_date >= start_date` |
+| total_days | NUMERIC(5,2) | NO | — | CHECK > 0 — derived once at creation from `start_date`/`end_date` (inclusive whole-day count), stored rather than recomputed on every read |
+| reason | TEXT | YES | NULL | |
+| status | VARCHAR(20) | NO | `'pending'` | CHECK IN (`draft`,`pending`,`approved`,`rejected`,`cancelled`) |
+| approved_by | UUID | YES | NULL | logical ref → `identity.users.id`, no FK — **Approval module extension point**, unused this phase |
+| decided_at | TIMESTAMPTZ | YES | NULL | Approval module extension point |
+| decision_comments | TEXT | YES | NULL | Approval module extension point |
+| cancelled_at | TIMESTAMPTZ | YES | NULL | |
+| cancellation_reason | TEXT | YES | NULL | |
+| created_at | TIMESTAMPTZ | NO | `now()` | |
+| updated_at | TIMESTAMPTZ | NO | `now()` | |
+| created_by | UUID | YES | NULL | logical ref → `identity.users.id` |
+| updated_by | UUID | YES | NULL | logical ref → `identity.users.id` |
+
+Indexes: `(employee_id, status)` — the overlap/duplicate/history query shape; `(employee_id, start_date, end_date)` — the date-range overlap query shape (`start_date <= :end AND end_date >= :start`). No index needed on `approved_by`/`decided_at` this phase — nothing queries by them yet, and adding one speculatively ahead of a real query shape would be exactly the kind of premature optimization the architecture doc's indexing philosophy avoids.
+
 ### 3.4 Schema `approvals`
 
 #### `approvals.approval_workflows`
@@ -359,11 +396,11 @@ Why `id` is `BIGINT` here and `UUID` everywhere else is explained in §5.1 — i
 
 **One-to-one:** `identity.users` ↔ `employees.employees` (optional both directions — a user account need not have an employee profile, and an employee need not yet have login access; enforced via the `UNIQUE` constraint on each side's foreign column, not a real FK, since it crosses schemas). An `employees.employees` row also has at most one Telegram link, directly on itself (`UNIQUE` on `employees.telegram_user_id`) — not a separate table, per the Employee & Telegram Authentication refactor.
 
-**One-to-many:** `employees.departments` → `employees.employees` (a department contains many employees). `employees.departments` → `employees.departments` (self-referential parent/child hierarchy). `employees.employees` → `employees.employees` (self-referential manager → direct reports). `leave.leave_types` → `leave.leave_balances` (a leave type has many balance records, one per employee per year). `approvals.approval_workflows` → `approvals.approval_steps` (a workflow has an ordered set of steps). `employees.employees` → `employees.link_tokens` (an employee may have issued several link tokens over time, only one ever redeemable — moved from removed `identity.users` → `identity.telegram_link_tokens`).
+**One-to-many:** `employees.departments` → `employees.employees` (a department contains many employees). `employees.departments` → `employees.departments` (self-referential parent/child hierarchy). `employees.employees` → `employees.employees` (self-referential manager → direct reports). `leave.leave_types` → `leave.leave_balances` (a leave type has many balance records, one per employee per year). `leave.leave_types` → `leave.leave_requests` (a leave type has many requests). `approvals.approval_workflows` → `approvals.approval_steps` (a workflow has an ordered set of steps). `employees.employees` → `employees.link_tokens` (an employee may have issued several link tokens over time, only one ever redeemable — moved from removed `identity.users` → `identity.telegram_link_tokens`).
 
 **Many-to-many:** `identity.users` ↔ `identity.roles`, through `identity.user_roles` — the only true many-to-many relationship in this phase's scope, reflecting that a person can legitimately hold more than one system role simultaneously.
 
-**Logical (cross-schema, no DB-enforced FK):** `identity.users.employee_id`, `employees.employees.user_id`, `leave.leave_balances.employee_id`, `approvals.approval_workflows.subject_id`/`approval_steps.approver_user_id`/`approver_role_id`, every `created_by`/`updated_by` column, and `audit.audit_log.record_id`. All of these are intentionally plain columns, not foreign keys, because they cross the module/schema boundary established in `HRMS_Architecture.md` §5 — referential integrity for these is the responsibility of the application layer (repository/port pattern), not the database.
+**Logical (cross-schema, no DB-enforced FK):** `identity.users.employee_id`, `employees.employees.user_id`, `leave.leave_balances.employee_id`, `leave.leave_requests.employee_id`/`approved_by`, `approvals.approval_workflows.subject_id`/`approval_steps.approver_user_id`/`approver_role_id`, every `created_by`/`updated_by` column, and `audit.audit_log.record_id`. All of these are intentionally plain columns, not foreign keys, because they cross the module/schema boundary established in `HRMS_Architecture.md` §5 — referential integrity for these is the responsibility of the application layer (repository/port pattern), not the database.
 
 ---
 
@@ -377,7 +414,7 @@ Every table's primary key gets Postgres's automatic B-tree index for free. The o
 
 ### 5.2 Foreign key indexes
 
-PostgreSQL does **not** automatically index foreign key columns (only the referenced side gets an index via the primary key). Every FK column in this schema needs an explicit B-tree index, or every join and every `ON DELETE` cascade check degrades to a sequential scan as tables grow. Concretely: `user_roles.role_id`, `link_tokens.employee_id`, `departments.parent_department_id`, `departments.head_employee_id`, `employees.department_id`, `employees.manager_id`, `leave_balances.leave_type_id`, `approval_steps.workflow_id` all get explicit indexes. (`user_roles.user_id` and similar composite-PK leading columns don't need a separate index — the PK's B-tree already serves lookups on the leading column.)
+PostgreSQL does **not** automatically index foreign key columns (only the referenced side gets an index via the primary key). Every FK column in this schema needs an explicit B-tree index, or every join and every `ON DELETE` cascade check degrades to a sequential scan as tables grow. Concretely: `user_roles.role_id`, `link_tokens.employee_id`, `departments.parent_department_id`, `departments.head_employee_id`, `employees.department_id`, `employees.manager_id`, `leave_balances.leave_type_id`, `leave_requests.leave_type_id`, `approval_steps.workflow_id` all get explicit indexes. (`user_roles.user_id` and similar composite-PK leading columns don't need a separate index — the PK's B-tree already serves lookups on the leading column.)
 
 ### 5.3 Search optimization indexes
 

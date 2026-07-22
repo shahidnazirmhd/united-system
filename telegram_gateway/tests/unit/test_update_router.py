@@ -5,10 +5,25 @@ from __future__ import annotations
 
 from src.api_client.endpoints.employees import EmployeeProfile, TelegramLinkStatus
 from src.auth.account_linking import AccountLinkingService
-from src.handlers import help_handler, link_handler, profile_handler, start_handler, status_handler  # noqa: F401 — registers commands
+from src.auth.leave_application import LeaveApplicationService
+from src.handlers import (  # noqa: F401 — registers commands
+    help_handler,
+    leave_handlers,
+    link_handler,
+    profile_handler,
+    start_handler,
+    status_handler,
+)
 from src.handlers.registry import registry
 from src.webhook.update_router import Dependencies, route
-from tests.fakes import FakeBotAPIClient, FakeCallbackQuery, FakeEmployeesEndpoint, FakeRedis, FakeTelegramUpdate
+from tests.fakes import (
+    FakeBotAPIClient,
+    FakeCallbackQuery,
+    FakeEmployeesEndpoint,
+    FakeLeaveEndpoint,
+    FakeRedis,
+    FakeTelegramUpdate,
+)
 
 _PROFILE = EmployeeProfile(
     id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
@@ -20,10 +35,17 @@ _LINKED_STATUS = TelegramLinkStatus(is_linked=True, telegram_username="ada", lin
 _UNLINKED_STATUS = TelegramLinkStatus(is_linked=False, telegram_username=None, linked_at=None)
 
 
-def _deps(*, employees=None):
+def _deps(*, employees=None, leave=None):
     employees = employees or FakeEmployeesEndpoint(link_status=_UNLINKED_STATUS)
+    leave = leave or FakeLeaveEndpoint()
     bot = FakeBotAPIClient()
-    deps = Dependencies(bot=bot, linking=AccountLinkingService(employees, FakeRedis()), employees=employees)
+    deps = Dependencies(
+        bot=bot,
+        linking=AccountLinkingService(employees, FakeRedis()),
+        employees=employees,
+        leave=leave,
+        leave_application=LeaveApplicationService(leave, FakeRedis()),
+    )
     return deps, bot
 
 
@@ -79,6 +101,21 @@ async def test_callback_query_dispatches_to_registered_callback():
     )
 
     assert "No changes made" in bot.sent_messages[-1]["text"]
+
+
+async def test_unlink_prompt_callback_from_profile_card_dispatches_correctly():
+    """Regression test for the profile card's "🔓 Unlink account" button:
+    its callback_data (account:unlink_prompt) must actually be registered
+    and reachable through the real router, not just through calling the
+    handler function directly."""
+    employees = FakeEmployeesEndpoint(link_status=_LINKED_STATUS)
+    deps, bot = _deps(employees=employees)
+
+    await route(
+        FakeTelegramUpdate(callback_data="account:unlink_prompt", callback_query=FakeCallbackQuery()), deps, registry
+    )
+
+    assert "Are you sure" in bot.sent_messages[-1]["text"]
 
 
 async def test_unknown_callback_answers_gracefully_without_crashing():

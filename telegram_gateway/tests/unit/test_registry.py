@@ -90,6 +90,49 @@ def test_get_command_by_menu_label_finds_the_registering_command():
     assert registry.get_command_by_menu_label("Not A Real Button") is None
 
 
+def test_callback_prefix_matches_dynamic_suffix():
+    registry = CommandRegistry()
+
+    @registry.callback_prefix("leave:apply:type:")
+    async def handle_type_selected(ctx):
+        pass
+
+    resolved = registry.get_callback("leave:apply:type:018f1234-5678-abcd")
+    assert resolved is not None
+    assert resolved.func is handle_type_selected
+    assert registry.get_callback("leave:cancel:select:018f1234") is None
+
+
+def test_exact_callback_takes_priority_over_a_matching_prefix():
+    registry = CommandRegistry()
+
+    @registry.callback_prefix("leave:apply:")
+    async def handle_prefix(ctx):
+        pass
+
+    @registry.callback("leave:apply:abort")
+    async def handle_exact(ctx):
+        pass
+
+    resolved = registry.get_callback("leave:apply:abort")
+    assert resolved.func is handle_exact
+
+
+def test_longest_matching_prefix_wins_when_multiple_match():
+    registry = CommandRegistry()
+
+    @registry.callback_prefix("leave:")
+    async def handle_general(ctx):
+        pass
+
+    @registry.callback_prefix("leave:cancel:select:")
+    async def handle_specific(ctx):
+        pass
+
+    resolved = registry.get_callback("leave:cancel:select:018f1234")
+    assert resolved.func is handle_specific
+
+
 def test_a_new_module_extends_the_menu_without_touching_existing_registrations():
     """The Open/Closed proof: registering a brand-new command (simulating a
     future Leave module) never requires modifying any existing registration

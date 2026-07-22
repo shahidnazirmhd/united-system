@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from src.errors import GatewayError, friendly_message_for
+from src.errors import GatewayError, TelegramAPIError, friendly_message_for
 from src.formatting.keyboards import build_profile_actions_keyboard
 from src.formatting.profile_formatter import format_my_profile
 from src.handlers.registry import registry
@@ -51,6 +51,20 @@ async def handle_profile_refresh(ctx: HandlerContext) -> None:
 
     callback_query = ctx.update.callback_query
     if callback_query is not None and callback_query.message is not None:
-        await ctx.bot.edit_message_text(
-            chat_id=ctx.chat_id, message_id=callback_query.message.message_id, text=text, reply_markup=keyboard
-        )
+        try:
+            await ctx.bot.edit_message_text(
+                chat_id=ctx.chat_id, message_id=callback_query.message.message_id, text=text, reply_markup=keyboard
+            )
+        except TelegramAPIError as exc:
+            if exc.description and "message is not modified" in exc.description.lower():
+                # Nothing on the card actually changed since it was last
+                # rendered (the common case — tapping Refresh right after
+                # opening the card) — Telegram rejects a no-op edit, but
+                # that's not a real failure. The callback was already
+                # answered above, so the employee's tap already stopped
+                # spinning; there's nothing further to show them.
+                log_event(
+                    logger, logging.INFO, "profile_refresh_no_change", telegram_user_id=ctx.telegram_user_id
+                )
+                return
+            raise

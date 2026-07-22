@@ -7,9 +7,12 @@ add a menu item — see registry.py's docstring for the full reasoning.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.handlers.registry import CommandRegistry
+
+if TYPE_CHECKING:
+    from src.api_client.endpoints.leave import LeaveRequest, LeaveType
 
 
 def build_main_menu_keyboard(registry: CommandRegistry) -> dict[str, Any]:
@@ -31,7 +34,7 @@ def build_profile_actions_keyboard() -> dict[str, Any]:
     return {
         "inline_keyboard": [
             [{"text": "🔄 Refresh", "callback_data": "profile:refresh"}],
-            [{"text": "🔓 Unlink account", "callback_data": "account:unlink_confirm"}],
+            [{"text": "🔓 Unlink account", "callback_data": "account:unlink_prompt"}],
         ]
     }
 
@@ -49,3 +52,66 @@ def build_unlink_confirmation_keyboard() -> dict[str, Any]:
 
 def remove_keyboard() -> dict[str, Any]:
     return {"remove_keyboard": True}
+
+
+# --- Leave (Phase 8) ------------------------------------------------------
+# Callback data for these uses `registry.callback_prefix()` (see that
+# method's docstring) since a leave type id / leave request id is chosen at
+# render time, not known ahead of time the way `profile:refresh` is.
+
+
+#: Telegram inline button text is limited to 64 characters — labels built
+#: from employee/leave-type data are truncated defensively rather than
+#: risking a rejected sendMessage call for an unusually long leave type
+#: name or a multi-line summary.
+_MAX_BUTTON_TEXT_LENGTH = 64
+
+
+def _truncate_button_text(text: str) -> str:
+    if len(text) <= _MAX_BUTTON_TEXT_LENGTH:
+        return text
+    return text[: _MAX_BUTTON_TEXT_LENGTH - 1] + "…"
+
+
+def build_leave_type_selection_keyboard(leave_types: list[LeaveType]) -> dict[str, Any]:
+    from src.formatting.leave_formatter import format_leave_type_button_label
+
+    rows = [
+        [{"text": _truncate_button_text(format_leave_type_button_label(lt)), "callback_data": f"leave:apply:type:{lt.id}"}]
+        for lt in leave_types
+    ]
+    rows.append([{"text": "❌ Cancel", "callback_data": "leave:apply:abort"}])
+    return {"inline_keyboard": rows}
+
+
+def build_apply_leave_confirm_keyboard() -> dict[str, Any]:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Submit", "callback_data": "leave:apply:confirm"},
+                {"text": "❌ Cancel", "callback_data": "leave:apply:abort"},
+            ]
+        ]
+    }
+
+
+def build_leave_request_selection_keyboard(requests: list[LeaveRequest]) -> dict[str, Any]:
+    from src.formatting.leave_formatter import format_leave_request_summary_line
+
+    rows = [
+        [{"text": _truncate_button_text(format_leave_request_summary_line(r)), "callback_data": f"leave:cancel:select:{r.id}"}]
+        for r in requests
+    ]
+    rows.append([{"text": "❌ Never mind", "callback_data": "leave:cancel:abort"}])
+    return {"inline_keyboard": rows}
+
+
+def build_cancel_leave_confirm_keyboard(leave_request_id: str) -> dict[str, Any]:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Yes, cancel it", "callback_data": f"leave:cancel:confirm:{leave_request_id}"},
+                {"text": "❌ Never mind", "callback_data": "leave:cancel:abort"},
+            ]
+        ]
+    }

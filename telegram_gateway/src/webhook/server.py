@@ -18,8 +18,10 @@ import redis.asyncio as redis
 from fastapi import FastAPI, Header, HTTPException, Request
 
 from src.api_client.endpoints.employees import EmployeesEndpoint
+from src.api_client.endpoints.leave import LeaveEndpoint
 from src.api_client.hrms_client import HRMSClient
 from src.auth.account_linking import AccountLinkingService
+from src.auth.leave_application import LeaveApplicationService
 from src.config import Settings
 from src.errors import InvalidWebhookSignatureError
 from src.handlers.registry import registry
@@ -39,7 +41,14 @@ def create_app(settings: Settings) -> FastAPI:
     # Importing these triggers every handler's @registry.command/@registry.callback
     # decorator to run — see main.py's docstring for why this import is
     # deliberately here (or in main.py) and not somewhere less obvious.
-    from src.handlers import help_handler, link_handler, profile_handler, start_handler, status_handler  # noqa: F401
+    from src.handlers import (  # noqa: F401
+        help_handler,
+        leave_handlers,
+        link_handler,
+        profile_handler,
+        start_handler,
+        status_handler,
+    )
 
     state: dict[str, object] = {}
 
@@ -53,10 +62,18 @@ def create_app(settings: Settings) -> FastAPI:
             timeout_seconds=settings.hrms_api_timeout_seconds,
         )
         employees_endpoint = EmployeesEndpoint(hrms_client)
+        leave_endpoint = LeaveEndpoint(hrms_client)
         linking_service = AccountLinkingService(employees_endpoint, redis_client)
+        leave_application_service = LeaveApplicationService(leave_endpoint, redis_client)
         rate_limiter = RateLimiter(redis_client, limit_per_window=settings.rate_limit_per_chat_per_minute)
 
-        state["deps"] = Dependencies(bot=bot, linking=linking_service, employees=employees_endpoint)
+        state["deps"] = Dependencies(
+            bot=bot,
+            linking=linking_service,
+            employees=employees_endpoint,
+            leave=leave_endpoint,
+            leave_application=leave_application_service,
+        )
         state["rate_limiter"] = rate_limiter
         state["redis"] = redis_client
         state["bot"] = bot

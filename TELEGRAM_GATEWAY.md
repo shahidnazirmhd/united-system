@@ -30,8 +30,8 @@ telegram_gateway/
 │   ├── webhook/            # the one inbound HTTP surface — server.py, update_router.py, security.py, rate_limiter.py
 │   ├── telegram_client/    # outbound calls TO the Telegram Bot API (send/edit message, answer callback)
 │   ├── api_client/         # outbound calls TO the HRMS backend — the ONLY path to HR data
-│   │   └── endpoints/      # one file per backend module called (today: employees.py — profile reads AND Telegram linking, both apps.employees now)
-│   ├── auth/                # account linking conversation state (no token storage — see §4)
+│   │   └── endpoints/      # one file per backend module called: employees.py (profile reads AND Telegram linking, both apps.employees), leave.py (types/balance/apply/history/detail/cancel, mirrors LEAVE_API.md's telegram/ surface)
+│   ├── auth/                # conversation state this service keeps locally: account linking (no token storage — see §4) AND the multi-step Apply Leave flow (§3b)
 │   ├── handlers/            # one file per command family + the Open/Closed command registry
 │   ├── formatting/          # pure functions: API JSON -> Telegram message text/keyboards
 │   ├── config.py            # env-driven settings only — no HR configuration
@@ -45,10 +45,10 @@ Every layer here has exactly one job, mirroring the backend's own module discipl
 
 - **`webhook/`** is the only inbound network surface. `security.py` rejects any request whose `X-Telegram-Bot-Api-Secret-Token` header doesn't match the configured secret, before the body is even parsed — Telegram's actual, documented anti-forgery mechanism, not a placeholder. `rate_limiter.py` applies a soft per-chat cap ahead of that.
 - **`telegram_client/`** only knows how to talk to Telegram's Bot API. It has zero knowledge of HR data.
-- **`api_client/`** only knows how to talk to the Django backend. `hrms_client.py` is the base HTTP client (attaches the static `X-Internal-Service-Key` header once, at construction, to every request; translates the backend's `{"success": false, "error": {...}}` envelope into `HRMSAPIError`); `endpoints/employees.py` maps 1:1 to every Gateway-facing endpoint under `apps/employees/interface/telegram_views.py` — profile reads and Telegram linking alike, since both are exclusively an Employee-module concern now.
-- **`auth/`** holds only the Gateway's own transient "awaiting OTP" conversation state — see §3 and §4.
-- **`handlers/`** contains one file per command (`start_handler.py`, `link_handler.py`, `profile_handler.py`, `status_handler.py`, `help_handler.py`) plus `registry.py`, the Open/Closed mechanism described in §6.
-- **`formatting/`** turns `EmployeeProfile` data into the actual Telegram message text and keyboard markup, entirely separate from the handlers that fetch that data — a display change is a one-file edit regardless of how many commands show the same data.
+- **`api_client/`** only knows how to talk to the Django backend. `hrms_client.py` is the base HTTP client (attaches the static `X-Internal-Service-Key` header once, at construction, to every request; translates the backend's `{"success": false, "error": {...}}` envelope into `HRMSAPIError`; `get_with_meta()` is the one method that also returns the response envelope's `meta` block, needed for `endpoints/leave.py`'s paginated history call); `endpoints/employees.py` maps 1:1 to every Gateway-facing endpoint under `apps/employees/interface/telegram_views.py`; `endpoints/leave.py` maps 1:1 to every endpoint under `LEAVE_API.md`'s "Telegram Gateway-facing surface".
+- **`auth/`** holds transient conversation state local to this service, never persisted to the backend: `account_linking.py`'s "awaiting OTP" state (§3, §4) and `leave_application.py`'s "mid-way through Apply Leave" state (§3b).
+- **`handlers/`** contains one file per command family (`start_handler.py`, `link_handler.py`, `profile_handler.py`, `status_handler.py`, `help_handler.py`, `leave_handlers.py`) plus `registry.py`, the Open/Closed mechanism described in §6.
+- **`formatting/`** turns endpoint response data into the actual Telegram message text and keyboard markup, entirely separate from the handlers that fetch that data — a display change is a one-file edit regardless of how many commands show the same data. `leave_formatter.py` and the Leave-specific builders in `keyboards.py` (`build_leave_type_selection_keyboard`, `build_apply_leave_confirm_keyboard`, `build_leave_request_selection_keyboard`, `build_cancel_leave_confirm_keyboard`) follow the same split.
 
 ## 3. Registration / linking flow
 
@@ -96,6 +96,70 @@ Two things worth calling out:
 
 **Where "still waiting for an OTP" state lives.** `auth/account_linking.py`'s `AccountLinkingService` is the only file in this service that models a linking flow as a two-step conversation. That state lives in this service's own Redis (`telegram_gateway:linking:{telegram_user_id}`), with a TTL matching the backend's own OTP lifetime (`apps/employees/application/services/employee_telegram_linking_service.py`'s `LINK_OTP_LIFETIME`) — so the Gateway never tells an employee "still waiting" past the point the backend would already reject the code as expired. This is the *only* local state this service keeps about linking; whether an account is actually linked is always asked of the backend fresh (see §4).
 
+## 3b. Leave commands and the Apply Leave conversation
+
+All six commands call `apps/leave`'s `telegram/` surface (`LEAVE_API.md` §"Telegram Gateway-facing surface") via `api_client/endpoints/leave.py`, authenticated the same way as everything else in this document — `X-Internal-Service-Key`, employee resolved by `telegram_user_id`, no JWT. No business rule (balance sufficiency, overlap, date validity, cancellability) is decided in this service; every one of those is enforced backend-side and surfaces here only as an `HRMSAPIError` translated by `friendly_message_for()`. Implementation: `handlers/leave_handlers.py` (all six commands and their callbacks live in this one file, per §3.5 of `HRMS_Folder_Structure.md`).
+
+| Command | Requires linking? | What it does |
+|---|---|---|
+| `/leave_types` | Yes | Lists active leave types and their default annual allowance. No menu button (referenced from `/apply_leave`'s picker instead). |
+| `/leave_balance` | Yes | Caller's balance for every active leave type, current year. |
+| `/apply_leave` | Yes | Starts the guided multi-step flow below. |
+| `/leave_history [page]` | Yes | Paginated list of the caller's own requests, 5 per page. |
+| `/leave_request <id>` | Yes | Full detail for one request. No menu button (an id isn't something an employee has memorized) — reachable from `/leave_history`'s listed ids. |
+| `/cancel_leave` | Yes | Lists the caller's own `pending`/`approved` requests as buttons, then asks for confirmation before cancelling. |
+
+**Apply Leave, step by step:**
+
+```
+Employee sends: /apply_leave
+        │
+        ▼
+Gateway calls  GET /api/v1/leave/telegram/types/  → shows an inline keyboard, one button per leave type
+        │        callback_data: "leave:apply:type:<leave_type_id>"
+        ▼
+Employee taps a leave type
+        │
+        ▼
+Gateway starts conversation state (auth/leave_application.py, Redis, 30-minute TTL,
+        keyed by telegram_user_id) → asks "Start date? (YYYY-MM-DD)"
+        │
+        ▼
+Employee replies with free text (start date)  ─┐
+        │                                       │  each step re-prompts on
+        ▼                                       │  unparseable input without
+Gateway asks "End date? (YYYY-MM-DD)"           │  advancing the step —
+        │                                       │  InvalidLeaveDateInputError,
+        ▼                                       │  shown directly since it's
+Employee replies with free text (end date)  ────┤  always locally constructed
+        │                                       │
+        ▼                                       │
+Gateway asks "Reason? (or send 'skip')" ────────┘
+        │
+        ▼
+Employee replies with free text (reason, or "skip")
+        │
+        ▼
+Gateway shows a summary + Confirm/Cancel inline keyboard
+        │        callback_data: "leave:apply:confirm" / "leave:apply:abort"
+        ├─ Cancel tapped → conversation state cleared, "No leave application was submitted."
+        └─ Confirm tapped → Gateway calls
+                 POST /api/v1/leave/telegram/requests/apply/
+                 │
+                 ├─ 422 insufficient_leave_balance / overlapping_leave_request /
+                 │        duplicate_leave_request / past_leave_start_date / invalid_leave_date_range
+                 │        → friendly error; state is cleared either way (submit() always clears
+                 │        state, success or failure — a rejected application isn't stale, it's over,
+                 │        and /apply_leave starts a clean one)
+                 └─ 201 → "Leave request submitted" confirmation, showing the new request's id
+```
+
+**Where the free-text steps get routed.** `webhook/update_router.py`'s message routing checks, in order: is an OTP verification pending (`auth/account_linking.py`) — checked first since it's the older, narrower flow — then is an Apply Leave conversation active (`ctx.leave_application.is_active()`); only if neither is true does plain text fall through to "I didn't understand that." This mirrors `link_handler.handle_otp_reply`'s precedent exactly, just for a three-step conversation instead of a one-step code entry.
+
+**Why `callback_prefix`, not `callback`.** A leave type id or leave request id is only known at runtime, so its callback_data (`leave:apply:type:<uuid>`, `leave:cancel:select:<uuid>`, `leave:cancel:confirm:<uuid>`) can't be registered as a fixed string ahead of time. `registry.callback_prefix()` (§6) matches on a static prefix and hands the handler the full `callback_data` string to parse the suffix from — `update_router.py`'s dispatch logic needed no changes to support this, it already just calls `registry.get_callback(data)`.
+
+**Cancel Leave only offers requests worth cancelling.** `handle_cancel_leave_start` filters to `pending`/`approved` requests before building the button list (`_CANCELLABLE_STATUSES` in `leave_handlers.py`) — a display-only filter mirroring the backend's own allowed-from states for cancellation (`LeaveRequest.cancel`); the backend re-enforces the real rule when Confirm is tapped regardless.
+
 ## 4. "Session" management — there isn't one
 
 Earlier phases of this service stored an encrypted access/refresh token pair per employee and refreshed it on demand (`auth/token_store.py`, `auth/session.py`). Both files are gone. Employees present the same `telegram_user_id` on every request; there is no token to go stale, no refresh to attempt, and no encrypted store to manage.
@@ -111,24 +175,37 @@ Every handler that needs employee data simply calls `ctx.employees.get_profile(t
 | `/profile` | Yes | "My Profile" card — job title, department, manager, contact info, employment type, status. Fields the approved schema has no column for (Company, Branch) render as a friendly placeholder, never invented data |
 | `/status` | Yes | A terser, status-only view |
 | `/unlink` | Yes | Asks for confirmation (inline keyboard), then unlinks |
+| `/leave_balance` | Yes | Leave balance by type, current year |
+| `/apply_leave` | Yes | Guided multi-step Apply Leave conversation — see §3b |
+| `/leave_history` | Yes | Paginated own leave request history |
+| `/cancel_leave` | Yes | Pick a pending/approved request to cancel, with confirmation |
+| `/leave_types` | Yes | List of active leave types (no menu button — see §3b) |
+| `/leave_request <id>` | Yes | Single request detail (no menu button — see §3b) |
 | `/help` | No | Static command list |
 
 The persistent Reply Keyboard (shown in place of the phone's own keyboard once linked) is built **from the same command registry** the slash commands are registered in — see §6 — not a second, hand-maintained button list.
 
 ## 6. Open/Closed extensibility (`handlers/registry.py`)
 
-The brief calls for a menu system "open for future HR modules" (Leave, Attendance, Payroll, Approvals — per the roadmap). The mechanism:
+The brief calls for a menu system "open for future HR modules" (Leave, Attendance, Payroll, Approvals — per the roadmap). Leave (§3b) is the first module built on this mechanism, and adding it required zero edits to `webhook/update_router.py`, `formatting/keyboards.build_main_menu_keyboard()`, or any existing handler file — only new files (`handlers/leave_handlers.py`, `api_client/endpoints/leave.py`, `auth/leave_application.py`, `formatting/leave_formatter.py`) plus additive changes to `handlers/context.py` (new required fields) and `webhook/server.py` (wiring the new dependencies into the composition root). The registration mechanism itself:
 
 ```python
-# a hypothetical future handlers/leave_handlers.py
+# handlers/leave_handlers.py — a real command
 from src.handlers.registry import registry
 
-@registry.command("leave_balance", menu_label="🌴 Leave Balance", menu_order=30)
+@registry.command("leave_balance", menu_label="💰 Leave Balance", menu_order=30)
 async def handle_leave_balance(ctx):
     ...
+
+# a callback whose data carries a runtime-only id (a leave type, a leave request)
+@registry.callback_prefix("leave:apply:type:")
+async def handle_apply_leave_type_selected(ctx):
+    ...  # ctx.update.callback_data is the full "leave:apply:type:<uuid>" string
 ```
 
-That's the entire integration surface. `webhook/update_router.py` (the only file with branching logic — "which handler," never business rules) is never edited to add this; it already just calls `registry.dispatch(...)`. `formatting/keyboards.build_main_menu_keyboard()` reads `registry.menu_entries()`, so the new button appears automatically, ordered by `menu_order`. A command registered without a `menu_label` (like `/start`) simply never appears as a button.
+`registry.command(...)`/`registry.callback(...)` are unchanged from earlier phases. `registry.callback_prefix(prefix)` is new (added for Leave): it registers a handler against a static prefix rather than one fixed string, for callback_data with a dynamically embedded suffix. `get_callback(data)` tries an exact match first, then the longest matching registered prefix — so a more specific prefix (`leave:cancel:select:`) always wins over a broader one (`leave:`) if both were ever registered, and an exact-string callback always wins over any prefix. `webhook/update_router.py`'s dispatch logic (`_route_callback`) needed no changes to support this — it already just calls `registry.get_callback(data)`.
+
+`formatting/keyboards.build_main_menu_keyboard()` reads `registry.menu_entries()`, so a new button appears automatically, ordered by `menu_order`. A command registered without a `menu_label` (like `/start`, or Leave's `/leave_types` and `/leave_request`) simply never appears as a button.
 
 ## 7. Security
 
@@ -189,7 +266,9 @@ See `telegram_gateway/.env.example` (and the same block duplicated in the projec
 
 ## Architecture notes relevant to future phases
 
-**Adding Leave/Attendance/Payroll/Approvals commands never requires touching `webhook/update_router.py`, `formatting/keyboards.py`, or any existing handler file** — see §6. The only new files needed are `api_client/endpoints/<module>.py` and `handlers/<module>_handlers.py`, matching the backend's own module-boundary discipline (a handler for a Leave command only ever imports `endpoints/leave.py`, never another module's endpoint file).
+**Leave (§3b) is built; Attendance/Payroll/Approvals are not.** Adding each of those never requires touching `webhook/update_router.py`'s dispatch logic or any existing handler file — see §6. The new files needed each time are `api_client/endpoints/<module>.py` and `handlers/<module>_handlers.py`, matching the backend's own module-boundary discipline (a handler for a Leave command only ever imports `endpoints/leave.py`, never another module's endpoint file). `handlers/context.py` and `webhook/server.py` do need additive edits each time — a new required field on `HandlerContext`, a new dependency wired in the composition root — as Leave's own integration demonstrates.
+
+**The next module on the roadmap is a generic Approval workflow** for HR requests (with some exceptions, e.g. leave balance requests are not approvable) — out of scope for this document until that phase's spec is provided. When it lands, it most likely needs its own Gateway commands (e.g. "my pending approvals," approve/reject inline buttons) built the same way Leave was.
 
 **This service will need its own CI job and its own container image**, independent of the backend's release cadence — that's the entire point of it being a separate deployable (`HRMS_Architecture.md` section 2's "monorepo, three deployables" decision).
 

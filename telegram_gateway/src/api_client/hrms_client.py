@@ -22,7 +22,7 @@ never "which employee is this."
 This class does exactly one thing: send the request and translate the
 backend's `{"success": false, "error": {...}}` envelope into
 `HRMSAPIError`. It does NOT decide what a response means for a particular
-employee — that's `api_client/endpoints/employees.py`'s job.
+employee — that's `api_client/endpoints/*.py`'s job.
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class HRMSClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def request(
+    async def _call(
         self,
         method: str,
         path: str,
@@ -56,6 +56,13 @@ class HRMSClient:
         json_body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Sends the request and returns the full parsed envelope
+        (`{"success", "data", "meta"?}` or `{"success": false, "error"}`),
+        already translated to `HRMSAPIError` on transport failure or a
+        `success: false` body. Both `request()` (data only) and
+        `get_with_meta()` (data + meta, for paginated list endpoints) are
+        thin wrappers around this one method, so the transport/error-
+        translation logic exists exactly once."""
         try:
             response = await self._client.request(method, path, json=json_body, params=params)
         except httpx.HTTPError as exc:
@@ -86,6 +93,17 @@ class HRMSClient:
                 message=error.get("message", "The HRMS API returned an unexpected error."),
             )
 
+        return body
+
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body = await self._call(method, path, json_body=json_body, params=params)
         return body.get("data", {})
 
     async def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict:
@@ -93,3 +111,15 @@ class HRMSClient:
 
     async def post(self, path: str, *, json_body: dict[str, Any] | None = None) -> dict:
         return await self.request("POST", path, json_body=json_body)
+
+    async def get_with_meta(self, path: str, *, params: dict[str, Any] | None = None) -> tuple[Any, dict]:
+        """Same as `get()`, but also returns the response envelope's `meta`
+        object — needed for paginated list endpoints (Leave's history is
+        the first caller; `shared_kernel.api.response.paginated_response`
+        on the Django side puts `page`/`page_size`/`total_count`/
+        `total_pages` there, not in `data`). Kept as a separate method
+        rather than changing `get()`'s return shape, so every existing call
+        site (Employees' profile/status/link endpoints, none of which are
+        paginated) is untouched."""
+        body = await self._call("GET", path, params=params)
+        return body.get("data", []), body.get("meta", {})

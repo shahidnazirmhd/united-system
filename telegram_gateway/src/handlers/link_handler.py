@@ -92,8 +92,11 @@ async def handle_otp_reply(ctx: HandlerContext) -> None:
     )
 
 
-@registry.command("unlink")
-async def handle_unlink(ctx: HandlerContext) -> None:
+async def _prompt_unlink(ctx: HandlerContext) -> None:
+    """Shared by the `/unlink` slash command and the "🔓 Unlink account"
+    button on the "My Profile" card (`account:unlink_prompt` callback below)
+    — both are just different ways to reach the same confirmation step, so
+    there's exactly one place that decides what that step looks like."""
     if not await ctx.linking.is_linked(ctx.telegram_user_id):
         await ctx.reply("Your Telegram account isn't linked to anything right now.")
         return
@@ -101,6 +104,22 @@ async def handle_unlink(ctx: HandlerContext) -> None:
         "Are you sure you want to unlink your Telegram account? You'll need to link again to use this bot.",
         reply_markup=build_unlink_confirmation_keyboard(),
     )
+
+
+@registry.command("unlink")
+async def handle_unlink(ctx: HandlerContext) -> None:
+    await _prompt_unlink(ctx)
+
+
+@registry.callback("account:unlink_prompt")
+async def handle_unlink_prompt_callback(ctx: HandlerContext) -> None:
+    """The profile card's "🔓 Unlink account" button. Deliberately routes
+    through the same confirmation step `/unlink` does, rather than the
+    button's callback_data pointing straight at `account:unlink_confirmed`
+    — skipping confirmation from a single tap would be too easy to hit by
+    accident."""
+    await ctx.answer_callback()
+    await _prompt_unlink(ctx)
 
 
 @registry.callback("account:unlink_confirmed")

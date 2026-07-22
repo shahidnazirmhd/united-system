@@ -49,7 +49,12 @@ def test_profile_actions_keyboard_has_refresh_and_unlink_callbacks():
     keyboard = build_profile_actions_keyboard()
     callback_data_values = [button["callback_data"] for row in keyboard["inline_keyboard"] for button in row]
     assert "profile:refresh" in callback_data_values
-    assert "account:unlink_confirm" in callback_data_values
+    # Must be a callback that's actually registered somewhere (see
+    # link_handler.py's `account:unlink_prompt`) — this used to be
+    # "account:unlink_confirm", which nothing ever registered, so tapping
+    # the button silently no-opped via update_router's unregistered-callback
+    # fallback.
+    assert "account:unlink_prompt" in callback_data_values
 
 
 def test_unlink_confirmation_keyboard_has_confirm_and_cancel():

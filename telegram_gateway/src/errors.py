@@ -40,9 +40,39 @@ class NoLinkingInProgressError(GatewayError):
     for this chat — nothing to verify it against."""
 
 
+class NoLeaveApplicationInProgressError(GatewayError):
+    """A free-text reply arrived that looks like it's continuing an
+    "Apply Leave" conversation, but no such conversation is pending (or has
+    since expired) for this chat — see auth/leave_application.py."""
+
+
+class InvalidLeaveDateInputError(GatewayError):
+    """The employee's free-text reply during the Apply Leave flow doesn't
+    parse as a YYYY-MM-DD date — a local input-shape problem, not a backend
+    business-rule rejection (see auth/leave_application.py's docstring on
+    the distinction)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 class TelegramAPIError(GatewayError):
     """The Telegram Bot API itself returned a non-ok response (send/edit
-    message, answer callback query, etc.)."""
+    message, answer callback query, etc.).
+
+    `description` is Telegram's own `description` field from the error
+    response body (e.g. "Bad Request: message is not modified"), kept
+    separate from the fuller `message`/`str(self)` so a caller that needs to
+    distinguish a specific, harmless failure (see
+    `handlers/profile_handler.py`'s "message is not modified" handling on
+    the Refresh button — editing a card back to identical content is a
+    no-op, not a real error) can check it directly instead of substring
+    matching the whole formatted exception text."""
+
+    def __init__(self, message: str, *, description: str | None = None) -> None:
+        super().__init__(message)
+        self.description = description
 
 
 class HRMSAPIError(GatewayError):
@@ -95,6 +125,20 @@ _FRIENDLY_MESSAGES: dict[str, str] = {
     "backend_unreachable": "We're having trouble reaching the HR system right now. Please try again in a "
     "few minutes.",
     "internal_error": "Something went wrong on our end. Please try again in a moment.",
+    # --- Leave module (Phase 8) — apps.leave.domain.exceptions's `code`
+    # values, same vocabulary-reuse discipline as the Employee entries above.
+    "leave_type_not_found": "That leave type isn't available anymore. Send /apply_leave to see the current list.",
+    "leave_request_not_found": "We couldn't find that leave request.",
+    "invalid_leave_date_range": "The end date can't be before the start date. Send /apply_leave to try again.",
+    "past_leave_start_date": "Leave can't start in the past. Send /apply_leave to try again with a future date.",
+    "duplicate_leave_request": "You already have a leave request for those exact dates.",
+    "overlapping_leave_request": "Those dates overlap with another pending or approved leave request you already "
+    "have. Send /leave_history to check your existing requests.",
+    "insufficient_leave_balance": "You don't have enough leave balance remaining for those dates. Send "
+    "/leave_balance to check what's available.",
+    "leave_request_ownership_mismatch": "That leave request doesn't belong to you.",
+    "leave_request_not_cancellable": "That leave request can no longer be cancelled (it may already be "
+    "cancelled or rejected).",
 }
 
 _DEFAULT_FRIENDLY_MESSAGE = "Something went wrong on our end. Please try again in a moment."
@@ -115,6 +159,15 @@ def friendly_message_for(error: Exception) -> str:
     if isinstance(error, LinkingInProgressConflictError):
         return "You already have a linking request in progress. Check your messages for the code, or wait a " \
             "few minutes for it to expire before trying again."
+    if isinstance(error, NoLeaveApplicationInProgressError):
+        return "I wasn't expecting that. Send /apply_leave to start a new leave application."
+    if isinstance(error, InvalidLeaveDateInputError):
+        # Safe to show directly — this message is always constructed
+        # locally by auth/leave_application.py from the employee's own
+        # input, never derived from a backend/transport error string (see
+        # this class's docstring and _FRIENDLY_MESSAGES's docstring above
+        # for why that distinction matters).
+        return error.message
     if isinstance(error, TelegramAPIError):
         return _DEFAULT_FRIENDLY_MESSAGE
     return _DEFAULT_FRIENDLY_MESSAGE
