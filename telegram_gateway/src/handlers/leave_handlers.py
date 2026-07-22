@@ -13,10 +13,16 @@ are simple request/response, no conversation needed). No business rule
 of those is the backend's job; this file only ever reacts to whatever
 `HRMSAPIError` the backend raises, via `errors.friendly_message_for`, the
 same discipline `handlers/link_handler.py` already established.
+
+Start/end date entry is `handlers/calendar_widget.py`'s generic inline
+calendar (see PURPOSE_START_DATE/PURPOSE_END_DATE below and
+`TELEGRAM_GATEWAY.md` §3b) — this file only supplies the two "what happens
+once a date is picked" callbacks, never any calendar UI/grid logic itself.
 """
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import TYPE_CHECKING
 
 from src.auth.leave_application import STEP_CONFIRM, STEP_END_DATE, STEP_REASON, STEP_START_DATE
@@ -42,6 +48,7 @@ from src.formatting.leave_formatter import (
     format_leave_types_prompt,
     format_no_cancellable_requests,
 )
+from src.handlers import calendar_widget
 from src.handlers.registry import registry
 from src.logging_config import log_event
 
@@ -49,6 +56,12 @@ if TYPE_CHECKING:
     from src.handlers.context import HandlerContext
 
 logger = logging.getLogger(__name__)
+
+# Calendar purposes for the two date steps of Apply Leave — see
+# handlers/calendar_widget.py's docstring. Dot-separated, never colons
+# (colons are calendar_keyboard.py's own callback_data field separator).
+PURPOSE_START_DATE = "leave.apply.start"
+PURPOSE_END_DATE = "leave.apply.end"
 
 # Requests still worth offering a "cancel" button for — mirrors the
 # backend's own allowed-from states for LeaveRequestService.cancel_leave
@@ -142,7 +155,7 @@ async def handle_apply_leave_type_selected(ctx: HandlerContext) -> None:
     await ctx.leave_application.start(
         telegram_user_id=ctx.telegram_user_id, leave_type_id=selected.id, leave_type_name=selected.name
     )
-    await ctx.reply(format_apply_leave_prompt_start_date())
+    await calendar_widget.start_calendar_flow(ctx, purpose=PURPOSE_START_DATE)
 
 
 @registry.callback("leave:apply:abort")
@@ -152,12 +165,68 @@ async def handle_apply_leave_abort(ctx: HandlerContext) -> None:
     await ctx.reply("No leave application was submitted.")
 
 
+async def _end_date_prompt(ctx: HandlerContext) -> str:
+    """The end-date calendar's prompt is dynamic, not a fixed string —
+    resolved fresh every time that calendar (or its month/year picker) is
+    rendered, so it always echoes back whatever From date is actually in
+    the conversation's state right now, however many times the employee
+    pages around before tapping a day. See calendar_widget.py's
+    PromptFactory."""
+    state = await ctx.leave_application.get_state(ctx.telegram_user_id)
+    from_date = state.start_date if state is not None else None
+    return format_apply_leave_prompt_end_date(from_date=from_date)
+
+
+@calendar_widget.on_date_selected(PURPOSE_START_DATE, prompt=format_apply_leave_prompt_start_date())
+async def _handle_start_date_picked(ctx: HandlerContext, value: date | None) -> None:
+    """Invoked by handlers/calendar_widget.py once a start date is picked
+    (or the picker cancelled — `value` is None). Never called for free
+    text; that's the point of moving date entry to a calendar."""
+    if value is None:
+        await ctx.leave_application.cancel(ctx.telegram_user_id)
+        return
+    try:
+        await ctx.leave_application.submit_start_date(ctx.telegram_user_id, value)
+    except GatewayError as exc:
+        log_event(logger, logging.INFO, "apply_leave_step_failed", telegram_user_id=ctx.telegram_user_id, error=str(exc))
+        await ctx.reply(friendly_message_for(exc))
+        return
+    # Anchor the end-date calendar on the just-picked start date, not
+    # today — most leave requests span a few nearby days, so this avoids
+    # making the employee page the calendar forward again immediately.
+    await calendar_widget.start_calendar_flow(ctx, purpose=PURPOSE_END_DATE, anchor=value)
+
+
+@calendar_widget.on_date_selected(PURPOSE_END_DATE, prompt=_end_date_prompt)
+async def _handle_end_date_picked(ctx: HandlerContext, value: date | None) -> None:
+    if value is None:
+        await ctx.leave_application.cancel(ctx.telegram_user_id)
+        return
+    try:
+        new_state = await ctx.leave_application.submit_end_date(ctx.telegram_user_id, value)
+    except GatewayError as exc:
+        log_event(logger, logging.INFO, "apply_leave_step_failed", telegram_user_id=ctx.telegram_user_id, error=str(exc))
+        await ctx.reply(friendly_message_for(exc))
+        return
+    # Reason is still free text — clear the calendar's buttons rather than
+    # leaving them on screen once they no longer do anything useful, and
+    # recap both picked dates so the employee can see they registered
+    # correctly before typing anything else.
+    await ctx.edit_message(
+        format_apply_leave_prompt_reason(from_date=new_state.start_date, to_date=new_state.end_date),
+        reply_markup={"inline_keyboard": []},
+    )
+
+
 async def handle_apply_leave_free_text(ctx: HandlerContext) -> None:
     """Routed here by `webhook/update_router.py` when a plain-text message
     arrives while `ctx.leave_application.is_active()` is true — the
     Apply Leave equivalent of `link_handler.handle_otp_reply`. Dispatches
-    on the conversation's current step, since (unlike the single-step OTP
-    flow) there are three different free-text steps in sequence."""
+    on the conversation's current step. Only STEP_REASON is actually
+    free-text input; STEP_START_DATE/STEP_END_DATE are calendar-only (see
+    the on_date_selected handlers above) — free text arriving during
+    either of those just nudges toward the buttons, the same "nudge, don't
+    silently ignore" treatment STEP_CONFIRM already gets below."""
     text = (ctx.update.text or "").strip()
     state = await ctx.leave_application.get_state(ctx.telegram_user_id)
     if state is None:
@@ -166,17 +235,11 @@ async def handle_apply_leave_free_text(ctx: HandlerContext) -> None:
         await ctx.reply("I wasn't expecting that. Send /apply_leave to start a new leave application.")
         return
 
+    if state.step in (STEP_START_DATE, STEP_END_DATE):
+        await ctx.reply("Please use the calendar buttons above to pick a date.")
+        return
+
     try:
-        if state.step == STEP_START_DATE:
-            await ctx.leave_application.submit_start_date(ctx.telegram_user_id, text)
-            await ctx.reply(format_apply_leave_prompt_end_date())
-            return
-
-        if state.step == STEP_END_DATE:
-            await ctx.leave_application.submit_end_date(ctx.telegram_user_id, text)
-            await ctx.reply(format_apply_leave_prompt_reason())
-            return
-
         if state.step == STEP_REASON:
             new_state = await ctx.leave_application.submit_reason(ctx.telegram_user_id, text)
             await ctx.reply(

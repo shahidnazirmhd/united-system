@@ -54,7 +54,7 @@ Activate it — **Windows cmd.exe**: `.venv\Scripts\activate.bat`; **Windows Pow
 pip install -r requirements-dev.txt
 pytest
 ```
-Expect `129 passed`. As of Phase 8, this includes `tests/unit/test_leave_application.py` (the `/apply_leave` multi-step conversation state machine), `tests/unit/test_leave_handlers.py` (every Leave command and callback, plus a full end-to-end conversation routed through `update_router.route()`), and the Leave-related additions to `test_registry.py` (the new `callback_prefix()` matching), `test_update_router.py`, and every other handler test file (each now wires a `leave=`/`leave_application=` fake into `HandlerContext`). It also includes regression tests for two profile-card bugs fixed post-launch: the "🔄 Refresh" button no longer surfaces a false "Something went wrong" when the card's content hasn't changed (`test_profile_handler.py`), and the "🔓 Unlink account" button's callback_data now actually routes to a registered handler (`test_link_handler.py`, `test_keyboards.py`, `test_update_router.py`). Deactivate and `cd ..` back to the project root when done (`deactivate`).
+Expect `177 passed`. As of Phase 8, this includes `tests/unit/test_leave_application.py` (the `/apply_leave` multi-step conversation state machine), `tests/unit/test_leave_handlers.py` (every Leave command and callback, plus a full end-to-end conversation routed through `update_router.route()`), and the Leave-related additions to `test_registry.py` (the new `callback_prefix()` matching), `test_update_router.py`, and every other handler test file (each now wires a `leave=`/`leave_application=` fake into `HandlerContext`). It also includes regression tests for two profile-card bugs fixed post-launch (the "🔄 Refresh" button no longer surfaces a false "Something went wrong" when the card's content hasn't changed, and the "🔓 Unlink account" button's callback_data now actually routes to a registered handler), and the reusable inline calendar date picker that replaced free-text date entry in Apply Leave: `tests/unit/test_calendar_keyboard.py` (the pure month-grid/callback_data functions, including `build_month_picker_keyboard`'s year-paged month grid) and `tests/unit/test_calendar_widget.py` (navigation, Today, Cancel, day-selection dispatch, opening/closing the month/year picker, and dynamic per-render prompts, using throwaway test purposes independent of Leave — see `TELEGRAM_GATEWAY.md` §3c). Deactivate and `cd ..` back to the project root when done (`deactivate`).
 
 ---
 
@@ -262,16 +262,20 @@ docker compose -f infra/docker-compose.yml --env-file .env exec backend python m
 
 ## Part H2 — Real end-to-end Leave testing via Telegram (Phase 8)
 
-Continue in the same chat as Part H — you should still be linked (if you ran the `/unlink` steps at the end of Part H's table, send `/link EMP-000001` and re-verify with the OTP before continuing). Full command reference and the Apply Leave flow diagram: `TELEGRAM_GATEWAY.md` §3b.
+Continue in the same chat as Part H — you should still be linked (if you ran the `/unlink` steps at the end of Part H's table, send `/link EMP-000001` and re-verify with the OTP before continuing). Full command reference, the Apply Leave flow diagram, and how the calendar picker works: `TELEGRAM_GATEWAY.md` §3b/§3c.
 
 | You send | Expect |
 |---|---|
 | `/leave_balance` (or "💰 Leave Balance") | One line per active leave type — `Annual Leave: 20.00 available (0.00 used)`-style — from the auto-provisioned balances confirmed in D4.3 |
 | `/leave_types` | A list of `Annual Leave`, `Sick Leave`, `Unpaid Leave` with their default annual days |
 | `/apply_leave` (or "📝 Apply Leave") | An inline keyboard, one button per leave type |
-| Tap **Annual Leave** | "Got it. What's the *start date*? Send it as YYYY-MM-DD." |
-| Send `2026-09-01` | "And the *end date*? Send it as YYYY-MM-DD." |
-| Send `2026-09-03` | "Want to add a reason? Send it, or reply \"skip\"." |
+| Tap **Annual Leave** | The SAME message turns into an inline calendar for the current month — "📅 Select your *From date* using the calendar below." with a tappable month/year caption, a Prev/Today/Next row, and a Cancel row underneath the day grid |
+| Tap **◀ Prev** a couple of times, then **Next ▶** back | The message keeps editing in place (no new messages appear) as the grid pages between months |
+| Tap the month/year caption (e.g. "September 2026") | The SAME message switches to the month/year picker view — a year-only ◀/▶ row, all 12 months as buttons, and Cancel |
+| Tap **▶** on the year row a couple of times, then a month button | Jumps straight to that month/year's day grid in one tap — no need to page one month at a time |
+| Tap any day number (e.g. `1`) | The SAME message turns into a calendar for the To date, opened on the month your From date fell in — "✅ *From date:* 2026-09-01" is echoed above "📅 Now select your *To date*." so it's always clear which date is already picked |
+| Tap the month/year caption again while picking the To date, page around, then tap a month | The "✅ *From date:* ..." line stays visible through the whole detour — the echoed date isn't lost when switching views |
+| Tap a later day number (e.g. `3`) | The SAME message becomes: "✅ *From date:* 2026-09-01\n✅ *To date:* 2026-09-03" followed by "Want to add a reason? Send it, or reply \"skip\"." — the calendar buttons are gone, and both dates are recapped |
 | Send `skip` | "*Please confirm your leave application:*" summary (type, dates, "📝 Reason: _(none)_") with **Confirm**/**Cancel** buttons |
 | Tap **Confirm** | "✅ Your leave request has been submitted and is *🟡 Pending*." plus dates and a request id — note the id, you'll need it below |
 | `/leave_balance` again | `Pending requests: 3 days` now reflects the days just applied for; `Available` is unchanged (the balance gate is applied at apply time, not shown as already-deducted — see `LEAVE_API.md`'s balance note) |
@@ -281,14 +285,21 @@ Continue in the same chat as Part H — you should still be linked (if you ran t
 | Tap the request you just submitted | "Cancel this request?" with its summary line |
 | Tap **Confirm** | "🚫 Leave request `<id>` has been cancelled."; a repeat `/leave_history` now shows "⚫ Cancelled" |
 
-### Leave error-path checks worth doing too
-- `/apply_leave` → pick a type → send `2026-09-01` then `2026-08-25` (end before start) → `invalid_leave_date_range`'s friendly message, and the conversation stays on the end-date step (doesn't silently advance)
-- `/apply_leave` → send a start date that isn't `YYYY-MM-DD` (e.g. `next monday`) → a friendly "I couldn't understand that date" reply, step doesn't advance (`InvalidLeaveDateInputError`)
+### Calendar picker checks worth doing too
+- `/apply_leave` → pick a type → on the From-date calendar, tap **Today** → the SAME message immediately becomes the To-date calendar (Today is a one-tap pick, not just a "jump to this month" button)
+- Mid-calendar (either From or To date step), type and send a plain message instead of tapping a button (e.g. `2026-09-01`) → "Please use the calendar buttons above to pick a date." — the flow does **not** try to parse it, and the calendar stays exactly as it was
+- On the From-date calendar, tap **❌ Cancel** → the SAME message becomes "❌ Cancelled." with no buttons, and `/apply_leave` can be started fresh immediately (state was cleared, not left dangling)
+- Page **◀ Prev** far enough back (many taps) → navigation eventually stops responding to further Prev taps once it hits the picker's minimum year (1970) — proves the paging bound, not an infinite scroll
+- Open the month/year picker, then page **◀** on the year row far enough back → year navigation also stops at 1970, same bound as the day-grid Prev
+- Open the month/year picker, then tap **❌ Cancel** from that view → same "❌ Cancelled." behavior as cancelling from the day grid — Cancel works from either view
+- Send free text (e.g. a stray word) while **not** mid-`/apply_leave`, and while not mid-OTP-linking → falls through to "I didn't understand that." (proves the free-text routing in `update_router.py` correctly falls through when neither conversation is active)
+
+### Leave business-rule error-path checks worth doing too
+- `/apply_leave` → pick a type → pick a start date, then an end date *before* it on the following calendar → `invalid_leave_date_range`'s friendly message on Confirm
 - Apply for the same exact type + dates twice in a row → the second attempt gets `duplicate_leave_request`'s friendly message on Confirm
 - Apply for overlapping dates under a *different* leave type while the first request is still `pending` → `overlapping_leave_request`
 - Apply for more days than your remaining balance allows → `insufficient_leave_balance`
-- Start `/apply_leave`, pick a type, then tap **Cancel** at the final confirmation step instead of Confirm → "No leave application was submitted." and `/apply_leave` can be started fresh immediately (state was cleared, not left dangling)
-- Send free text (e.g. a stray word) while **not** mid-`/apply_leave`, and while not mid-OTP-linking → falls through to "I didn't understand that." (proves the free-text routing in `update_router.py` correctly falls through when neither conversation is active)
+- Start `/apply_leave`, pick a type, get all the way to the confirmation summary, then tap **Cancel** there instead of Confirm → "No leave application was submitted." and `/apply_leave` can be started fresh immediately
 - `/cancel_leave` when you have no `pending`/`approved` requests (e.g. right after a fresh account, or after cancelling everything) → a friendly "nothing to cancel" message, no empty keyboard shown
 - `/leave_request <a made-up id>` → `leave_request_not_found`'s friendly message
 

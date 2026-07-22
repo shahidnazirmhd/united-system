@@ -89,15 +89,28 @@ def format_leave_request_detail(request: LeaveRequest) -> str:
 
 
 def format_apply_leave_prompt_start_date() -> str:
-    return "Got it. What's the *start date*? Send it as YYYY-MM-DD."
+    return "📅 Select your *From date* using the calendar below."
 
 
-def format_apply_leave_prompt_end_date() -> str:
-    return "And the *end date*? Send it as YYYY-MM-DD."
+def format_apply_leave_prompt_end_date(*, from_date: str | None = None) -> str:
+    """`from_date` (ISO string), when known, is echoed back so the employee
+    can see what they already picked while choosing the To date — see
+    handlers/leave_handlers.py's dynamic calendar prompt for the End Date
+    purpose, which is the only caller that ever has it."""
+    prompt = "📅 Now select your *To date*."
+    if from_date is None:
+        return prompt
+    return f"✅ *From date:* {from_date}\n\n{prompt}"
 
 
-def format_apply_leave_prompt_reason() -> str:
-    return 'Want to add a reason? Send it, or reply "skip".'
+def format_apply_leave_prompt_reason(*, from_date: str | None = None, to_date: str | None = None) -> str:
+    """`from_date`/`to_date`, when known, are echoed back as a recap so the
+    employee can see both picked dates before typing a reason — the last
+    checkpoint before the confirmation summary below."""
+    prompt = 'Want to add a reason? Send it, or reply "skip".'
+    if from_date is None or to_date is None:
+        return prompt
+    return f"✅ *From date:* {from_date}\n✅ *To date:* {to_date}\n\n{prompt}"
 
 
 def format_apply_leave_confirmation(state: LeaveApplicationState) -> str:
@@ -105,7 +118,8 @@ def format_apply_leave_confirmation(state: LeaveApplicationState) -> str:
     return (
         "*Please confirm your leave application:*\n\n"
         f"🏷️ Type: {escape_markdown(state.leave_type_name)}\n"
-        f"📅 Dates: {state.start_date} → {state.end_date}\n"
+        f"📅 From: {state.start_date}\n"
+        f"📅 To: {state.end_date}\n"
         f"{reason_line}"
     )
 

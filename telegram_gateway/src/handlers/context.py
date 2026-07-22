@@ -73,6 +73,22 @@ class HandlerContext:
     async def reply(self, text: str, *, reply_markup: dict | None = None) -> None:
         await self.bot.send_message(chat_id=self.chat_id, text=text, reply_markup=reply_markup)
 
+    async def edit_message(self, text: str, *, reply_markup: dict | None = None) -> None:
+        """Edits the message this update's callback query originated from
+        — the "edit existing message" counterpart to `reply()`'s send-new,
+        used wherever a callback should update the button UI in place
+        (`handlers/calendar_widget.py`'s navigation/cancel, and the flows
+        that build on it) rather than leaving a trail of new messages.
+        Only valid when handling a callback query with a message attached
+        (true for every registered callback in this service) — asserts
+        rather than silently falling back to `reply`, so a caller using
+        this from the wrong context fails loudly in tests."""
+        callback_query = self.update.callback_query
+        assert callback_query is not None and callback_query.message is not None
+        await self.bot.edit_message_text(
+            chat_id=self.chat_id, message_id=callback_query.message.message_id, text=text, reply_markup=reply_markup
+        )
+
     async def answer_callback(self, *, text: str | None = None, show_alert: bool = False) -> None:
         if self.update.callback_query is not None:
             await self.bot.answer_callback_query(

@@ -32,8 +32,8 @@ telegram_gateway/
 │   ├── api_client/         # outbound calls TO the HRMS backend — the ONLY path to HR data
 │   │   └── endpoints/      # one file per backend module called: employees.py (profile reads AND Telegram linking, both apps.employees), leave.py (types/balance/apply/history/detail/cancel, mirrors LEAVE_API.md's telegram/ surface)
 │   ├── auth/                # conversation state this service keeps locally: account linking (no token storage — see §4) AND the multi-step Apply Leave flow (§3b)
-│   ├── handlers/            # one file per command family + the Open/Closed command registry
-│   ├── formatting/          # pure functions: API JSON -> Telegram message text/keyboards
+│   ├── handlers/            # one file per command family + the Open/Closed command registry + calendar_widget.py (§3c, reusable date-picker dispatch)
+│   ├── formatting/          # pure functions: API JSON -> Telegram message text/keyboards, incl. calendar_keyboard.py (§3c)
 │   ├── config.py            # env-driven settings only — no HR configuration
 │   └── main.py               # process entrypoint
 ├── tests/unit/
@@ -122,22 +122,26 @@ Employee taps a leave type
         │
         ▼
 Gateway starts conversation state (auth/leave_application.py, Redis, 30-minute TTL,
-        keyed by telegram_user_id) → asks "Start date? (YYYY-MM-DD)"
+        keyed by telegram_user_id) → EDITS that same message into an inline
+        calendar for the start date (handlers/calendar_widget.py — see §3c)
         │
         ▼
-Employee replies with free text (start date)  ─┐
-        │                                       │  each step re-prompts on
-        ▼                                       │  unparseable input without
-Gateway asks "End date? (YYYY-MM-DD)"           │  advancing the step —
-        │                                       │  InvalidLeaveDateInputError,
-        ▼                                       │  shown directly since it's
-Employee replies with free text (end date)  ────┤  always locally constructed
-        │                                       │
-        ▼                                       │
-Gateway asks "Reason? (or send 'skip')" ────────┘
+Employee taps a day (or "Today") on the calendar  ─┐
+        │                                           │  Prev/Next page the
+        ▼                                           │  grid without leaving
+Gateway edits the SAME message into a calendar      │  the step; Cancel aborts
+        for the end date, anchored on the month      │  the whole application
+        the start date fell in                       │  (state cleared, message
+        │                                           │  edited to "❌ Cancelled.")
+        ▼                                           │
+Employee taps a day (or "Today") on the calendar ───┘
         │
         ▼
-Employee replies with free text (reason, or "skip")
+Gateway edits the SAME message: "Reason? (or send 'skip')", buttons cleared
+        │
+        ▼
+Employee replies with free text (reason, or "skip") — the one step still
+        free text; there's no sensible button UI for an open-ended reason
         │
         ▼
 Gateway shows a summary + Confirm/Cancel inline keyboard
@@ -154,11 +158,26 @@ Gateway shows a summary + Confirm/Cancel inline keyboard
                  └─ 201 → "Leave request submitted" confirmation, showing the new request's id
 ```
 
-**Where the free-text steps get routed.** `webhook/update_router.py`'s message routing checks, in order: is an OTP verification pending (`auth/account_linking.py`) — checked first since it's the older, narrower flow — then is an Apply Leave conversation active (`ctx.leave_application.is_active()`); only if neither is true does plain text fall through to "I didn't understand that." This mirrors `link_handler.handle_otp_reply`'s precedent exactly, just for a three-step conversation instead of a one-step code entry.
+**Where the free-text steps get routed.** `webhook/update_router.py`'s message routing checks, in order: is an OTP verification pending (`auth/account_linking.py`) — checked first since it's the older, narrower flow — then is an Apply Leave conversation active (`ctx.leave_application.is_active()`); only if neither is true does plain text fall through to "I didn't understand that." Free text arriving while the conversation is mid-calendar (start/end date step) doesn't attempt to parse it as a date at all anymore — it nudges the employee back to the calendar buttons instead (`handlers/leave_handlers.py`'s `handle_apply_leave_free_text`). Reason is still genuinely free text and mirrors `link_handler.handle_otp_reply`'s precedent exactly.
 
-**Why `callback_prefix`, not `callback`.** A leave type id or leave request id is only known at runtime, so its callback_data (`leave:apply:type:<uuid>`, `leave:cancel:select:<uuid>`, `leave:cancel:confirm:<uuid>`) can't be registered as a fixed string ahead of time. `registry.callback_prefix()` (§6) matches on a static prefix and hands the handler the full `callback_data` string to parse the suffix from — `update_router.py`'s dispatch logic needed no changes to support this, it already just calls `registry.get_callback(data)`.
+**Why `callback_prefix`, not `callback`.** A leave type id or leave request id is only known at runtime, so its callback_data (`leave:apply:type:<uuid>`, `leave:cancel:select:<uuid>`, `leave:cancel:confirm:<uuid>`) can't be registered as a fixed string ahead of time — the calendar's own callback_data (`cal:<purpose>:<action>:<yyyymm>[:<day>]`, §3c) is the same story. `registry.callback_prefix()` (§6) matches on a static prefix and hands the handler the full `callback_data` string to parse the suffix from — `update_router.py`'s dispatch logic needed no changes to support any of this, it already just calls `registry.get_callback(data)`.
 
 **Cancel Leave only offers requests worth cancelling.** `handle_cancel_leave_start` filters to `pending`/`approved` requests before building the button list (`_CANCELLABLE_STATUSES` in `leave_handlers.py`) — a display-only filter mirroring the backend's own allowed-from states for cancellation (`LeaveRequest.cancel`); the backend re-enforces the real rule when Confirm is tapped regardless.
+
+## 3c. The reusable inline calendar (`formatting/calendar_keyboard.py` + `handlers/calendar_widget.py`)
+
+Leave's start/end date steps are the first, but not the only intended, consumer of this — the brief was to build a date picker any future HR module (Attendance corrections, Payroll effective dates, ...) can reuse without touching this file or `webhook/update_router.py`. The split, matching this document's usual formatting-vs-dispatch separation:
+
+- **`formatting/calendar_keyboard.py`** — pure, stateless. `build_calendar_keyboard(purpose, year, month)` returns one month's `InlineKeyboardMarkup` (a tappable month/year caption row, weekday headers, day-number buttons Monday-first, a Prev/Today/Next row, a Cancel row) built entirely from the standard library `calendar` module — deliberately no third-party calendar package. `build_month_picker_keyboard(purpose, year)` returns the second view the caption row opens: a year-only Prev/Next row plus all 12 months of that year as buttons, so reaching a month many pages away (e.g. December next year) is two taps — Next-year, then the month — instead of paging Next one month at a time. `parse_calendar_callback(data)` decodes a button's callback_data back into `(purpose, action, year, month, day)`, returning `None` (never raising) for anything that doesn't look like this widget's own data. `shift_month(year, month, delta)` is the pure month-arithmetic day-grid Prev/Next relies on. `MIN_YEAR`/`MAX_YEAR` (1970–2100) bound how far either view's navigation can page — the stdlib `calendar` module doesn't itself reject year 0 or negative years, so without an explicit limit repeated Prev taps would page backward forever into nonsensical dates.
+- **`handlers/calendar_widget.py`** — the dispatch half, registered once via `@registry.callback_prefix("cal:")`. A consuming module calls `register once, at import time`:
+  ```python
+  @calendar_widget.on_date_selected("leave.apply.start", prompt="📅 Select your *From date* ...")
+  async def _on_start_date_picked(ctx, value: date | None) -> None:
+      ...  # value is None if the picker was cancelled
+  ```
+  and kicks a calendar off with `await calendar_widget.start_calendar_flow(ctx, purpose="leave.apply.start", anchor=some_date)`. Everything else — Prev/Next paging on either view, opening/closing the month picker, the "Today" quick-pick, Cancel (edits the message to "❌ Cancelled.", clears its keyboard, then still calls the registered handler with `None` so the owning module can clean up its own state) — is handled generically, with zero knowledge of what "leave.apply.start" means. `purpose` strings use `.`/`_` internally, never `:` (reserved as `calendar_keyboard.py`'s own callback_data field separator — enforced by an assertion, not just convention).
+- **`prompt` can be a plain string, or an async function of `HandlerContext`** (`Callable[[HandlerContext], Awaitable[str]]`), resolved fresh every time that purpose's view is rendered — navigating months, opening the month picker, all of it. Leave's end-date purpose uses this: its prompt reads the conversation's own state and echoes back whatever From date was already picked ("✅ *From date:* 2026-09-01 ... now select your *To date*"), so an employee paging around the end-date calendar never loses track of what they've already chosen. A plain string behaves exactly like a callable that always returns it — most purposes don't need anything dynamic.
+- **Every navigation/cancel/view-switch action edits the existing message** (`HandlerContext.edit_message`, a small helper alongside `reply()`) — never sends a new one, so paging through months or years doesn't leave a trail of messages in the chat.
 
 ## 4. "Session" management — there isn't one
 
@@ -266,7 +285,7 @@ See `telegram_gateway/.env.example` (and the same block duplicated in the projec
 
 ## Architecture notes relevant to future phases
 
-**Leave (§3b) is built; Attendance/Payroll/Approvals are not.** Adding each of those never requires touching `webhook/update_router.py`'s dispatch logic or any existing handler file — see §6. The new files needed each time are `api_client/endpoints/<module>.py` and `handlers/<module>_handlers.py`, matching the backend's own module-boundary discipline (a handler for a Leave command only ever imports `endpoints/leave.py`, never another module's endpoint file). `handlers/context.py` and `webhook/server.py` do need additive edits each time — a new required field on `HandlerContext`, a new dependency wired in the composition root — as Leave's own integration demonstrates.
+**Leave (§3b) is built; Attendance/Payroll/Approvals are not.** Adding each of those never requires touching `webhook/update_router.py`'s dispatch logic or any existing handler file — see §6. The new files needed each time are `api_client/endpoints/<module>.py` and `handlers/<module>_handlers.py`, matching the backend's own module-boundary discipline (a handler for a Leave command only ever imports `endpoints/leave.py`, never another module's endpoint file). `handlers/context.py` and `webhook/server.py` do need additive edits each time — a new required field on `HandlerContext`, a new dependency wired in the composition root — as Leave's own integration demonstrates. Any future date-entry step (an Attendance correction date, a Payroll effective date, ...) doesn't need any of that groundwork repeated — `handlers/calendar_widget.py` (§3c) is already generic; a new module just picks its own `purpose` string and registers a handler.
 
 **The next module on the roadmap is a generic Approval workflow** for HR requests (with some exceptions, e.g. leave balance requests are not approvable) — out of scope for this document until that phase's spec is provided. When it lands, it most likely needs its own Gateway commands (e.g. "my pending approvals," approve/reject inline buttons) built the same way Leave was.
 

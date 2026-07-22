@@ -46,17 +46,6 @@ class NoLeaveApplicationInProgressError(GatewayError):
     since expired) for this chat — see auth/leave_application.py."""
 
 
-class InvalidLeaveDateInputError(GatewayError):
-    """The employee's free-text reply during the Apply Leave flow doesn't
-    parse as a YYYY-MM-DD date — a local input-shape problem, not a backend
-    business-rule rejection (see auth/leave_application.py's docstring on
-    the distinction)."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
-
-
 class TelegramAPIError(GatewayError):
     """The Telegram Bot API itself returned a non-ok response (send/edit
     message, answer callback query, etc.).
@@ -161,13 +150,6 @@ def friendly_message_for(error: Exception) -> str:
             "few minutes for it to expire before trying again."
     if isinstance(error, NoLeaveApplicationInProgressError):
         return "I wasn't expecting that. Send /apply_leave to start a new leave application."
-    if isinstance(error, InvalidLeaveDateInputError):
-        # Safe to show directly — this message is always constructed
-        # locally by auth/leave_application.py from the employee's own
-        # input, never derived from a backend/transport error string (see
-        # this class's docstring and _FRIENDLY_MESSAGES's docstring above
-        # for why that distinction matters).
-        return error.message
     if isinstance(error, TelegramAPIError):
         return _DEFAULT_FRIENDLY_MESSAGE
     return _DEFAULT_FRIENDLY_MESSAGE

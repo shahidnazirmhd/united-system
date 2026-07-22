@@ -1,7 +1,12 @@
 """Unit tests for auth/leave_application.py's LeaveApplicationService — the
 multi-step "Apply Leave" conversation (type -> start date -> end date ->
-reason -> confirm -> submit)."""
+reason -> confirm -> submit). Start/end dates are supplied as `date`
+objects throughout, matching how handlers/leave_handlers.py's calendar
+resume handlers actually call this service — there is no free-text date
+parsing left in this class at all (see handlers/calendar_widget.py)."""
 from __future__ import annotations
+
+from datetime import date
 
 import pytest
 
@@ -13,7 +18,7 @@ from src.auth.leave_application import (
     STEP_START_DATE,
     LeaveApplicationService,
 )
-from src.errors import InvalidLeaveDateInputError, NoLeaveApplicationInProgressError
+from src.errors import NoLeaveApplicationInProgressError
 from tests.fakes import FakeLeaveEndpoint, FakeRedis, make_hrms_error
 
 _APPLIED_REQUEST = LeaveRequest(
@@ -47,30 +52,18 @@ async def test_submit_start_date_advances_to_end_date_step():
     service = _service()
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
 
-    state = await service.submit_start_date(42, "2026-09-01")
+    state = await service.submit_start_date(42, date(2026, 9, 1))
 
     assert state.step == STEP_END_DATE
     assert state.start_date == "2026-09-01"
 
 
-async def test_submit_start_date_rejects_unparseable_input():
-    service = _service()
-    await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-
-    with pytest.raises(InvalidLeaveDateInputError):
-        await service.submit_start_date(42, "not a date")
-
-    # Rejecting bad input must not silently advance the step.
-    state = await service.get_state(42)
-    assert state.step == STEP_START_DATE
-
-
 async def test_submit_end_date_advances_to_reason_step():
     service = _service()
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-    await service.submit_start_date(42, "2026-09-01")
+    await service.submit_start_date(42, date(2026, 9, 1))
 
-    state = await service.submit_end_date(42, "2026-09-03")
+    state = await service.submit_end_date(42, date(2026, 9, 3))
 
     assert state.step == STEP_REASON
     assert state.end_date == "2026-09-03"
@@ -81,14 +74,14 @@ async def test_submit_end_date_raises_when_start_date_step_not_yet_completed():
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
 
     with pytest.raises(NoLeaveApplicationInProgressError):
-        await service.submit_end_date(42, "2026-09-03")
+        await service.submit_end_date(42, date(2026, 9, 3))
 
 
 async def test_submit_reason_advances_to_confirm_step():
     service = _service()
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-    await service.submit_start_date(42, "2026-09-01")
-    await service.submit_end_date(42, "2026-09-03")
+    await service.submit_start_date(42, date(2026, 9, 1))
+    await service.submit_end_date(42, date(2026, 9, 3))
 
     state = await service.submit_reason(42, "Family trip")
 
@@ -99,8 +92,8 @@ async def test_submit_reason_advances_to_confirm_step():
 async def test_submit_reason_treats_skip_as_no_reason():
     service = _service()
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-    await service.submit_start_date(42, "2026-09-01")
-    await service.submit_end_date(42, "2026-09-03")
+    await service.submit_start_date(42, date(2026, 9, 1))
+    await service.submit_end_date(42, date(2026, 9, 3))
 
     state = await service.submit_reason(42, "skip")
 
@@ -111,8 +104,8 @@ async def test_submit_calls_backend_and_clears_state_on_success():
     leave = FakeLeaveEndpoint(apply_result=_APPLIED_REQUEST)
     service = _service(leave=leave)
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-    await service.submit_start_date(42, "2026-09-01")
-    await service.submit_end_date(42, "2026-09-03")
+    await service.submit_start_date(42, date(2026, 9, 1))
+    await service.submit_end_date(42, date(2026, 9, 3))
     await service.submit_reason(42, "skip")
 
     await service.submit(42)
@@ -133,8 +126,8 @@ async def test_submit_clears_state_even_when_backend_rejects_it():
     leave = FakeLeaveEndpoint(raise_on_apply=make_hrms_error("insufficient_leave_balance", status_code=422))
     service = _service(leave=leave)
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-    await service.submit_start_date(42, "2026-09-01")
-    await service.submit_end_date(42, "2026-09-03")
+    await service.submit_start_date(42, date(2026, 9, 1))
+    await service.submit_end_date(42, date(2026, 9, 3))
     await service.submit_reason(42, "skip")
 
     with pytest.raises(Exception) as exc_info:
@@ -147,7 +140,7 @@ async def test_submit_clears_state_even_when_backend_rejects_it():
 async def test_submit_without_reaching_confirm_step_raises():
     service = _service()
     await service.start(telegram_user_id=42, leave_type_id="lt-1", leave_type_name="Annual Leave")
-    await service.submit_start_date(42, "2026-09-01")
+    await service.submit_start_date(42, date(2026, 9, 1))
 
     with pytest.raises(NoLeaveApplicationInProgressError):
         await service.submit(42)

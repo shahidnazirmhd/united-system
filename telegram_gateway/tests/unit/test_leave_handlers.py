@@ -2,19 +2,22 @@
 callback, exercised through the handler functions directly (matching
 test_link_handler.py's/test_profile_handler.py's precedent), plus one
 end-to-end walk of the Apply Leave conversation through update_router.route()
-to prove the free-text routing itself works, not just the handler in
-isolation.
+to prove the free-text AND calendar-callback routing both work, not just
+the handler functions in isolation.
 """
 from __future__ import annotations
+
+from datetime import date
 
 from src.api_client.endpoints.leave import LeaveBalance, LeaveHistoryPage, LeaveRequest, LeaveType
 from src.auth.account_linking import AccountLinkingService
 from src.auth.leave_application import LeaveApplicationService
-from src.handlers import leave_handlers
+from src.handlers import calendar_widget, leave_handlers
 from src.handlers.context import HandlerContext
 from src.webhook.update_router import Dependencies, route
 from tests.fakes import (
     FakeBotAPIClient,
+    FakeCallbackMessage,
     FakeCallbackQuery,
     FakeEmployeesEndpoint,
     FakeLeaveEndpoint,
@@ -127,6 +130,10 @@ async def test_apply_leave_start_with_no_types_configured():
 
 
 async def test_apply_leave_type_selected_starts_conversation():
+    """Now that dates are calendar-only, picking a leave type must edit
+    the SAME message (replacing the type-selection buttons with the
+    calendar) rather than sending a new one — see handlers/calendar_widget
+    .py's start_calendar_flow, which this handler now calls."""
     leave = FakeLeaveEndpoint(types=[_ANNUAL, _SICK])
     ctx = _ctx(
         FakeTelegramUpdate(callback_data="leave:apply:type:lt-annual", callback_query=FakeCallbackQuery()),
@@ -138,7 +145,9 @@ async def test_apply_leave_type_selected_starts_conversation():
     state = await ctx.leave_application.get_state(ctx.telegram_user_id)
     assert state.leave_type_id == "lt-annual"
     assert state.leave_type_name == "Annual Leave"
-    assert "start date" in ctx.bot.sent_messages[-1]["text"]
+    assert ctx.bot.sent_messages == []
+    assert "From date" in ctx.bot.edited_messages[-1]["text"]
+    assert ctx.bot.edited_messages[-1]["reply_markup"]["inline_keyboard"]  # the calendar grid
 
 
 async def test_apply_leave_type_selected_rejects_unknown_type():
@@ -165,18 +174,37 @@ async def test_apply_leave_abort_clears_state():
     assert "No leave application was submitted" in ctx.bot.sent_messages[-1]["text"]
 
 
-async def test_apply_leave_free_text_walks_through_all_steps_to_confirmation():
+async def test_apply_leave_calendar_walks_through_start_and_end_date_to_reason_prompt():
+    """Start/end dates are picked via the calendar (day-tap callbacks),
+    never free text — this is the calendar-driven equivalent of the old
+    free-text walkthrough test."""
     leave = FakeLeaveEndpoint()
-    ctx = _ctx(FakeTelegramUpdate(text="2026-09-01"), leave=leave)
+    ctx = _ctx(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{leave_handlers.PURPOSE_START_DATE}:day:202609:01",
+            callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=1)),
+        ),
+        leave=leave,
+    )
     await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
 
-    await leave_handlers.handle_apply_leave_free_text(ctx)
-    assert "end date" in ctx.bot.sent_messages[-1]["text"]
+    await calendar_widget.handle_calendar_callback(ctx)
+    end_date_prompt = ctx.bot.edited_messages[-1]["text"]
+    assert "To date" in end_date_prompt
+    assert "2026-09-01" in end_date_prompt  # the From date is echoed back, per the new "make it clear" requirement
+    state = await ctx.leave_application.get_state(ctx.telegram_user_id)
+    assert state.start_date == "2026-09-01"
 
-    ctx.update.text = "2026-09-03"
-    await leave_handlers.handle_apply_leave_free_text(ctx)
-    assert "reason" in ctx.bot.sent_messages[-1]["text"].lower()
+    ctx.update.callback_data = f"cal:{leave_handlers.PURPOSE_END_DATE}:day:202609:03"
+    await calendar_widget.handle_calendar_callback(ctx)
+    reason_prompt = ctx.bot.edited_messages[-1]["text"]
+    assert "reason" in reason_prompt.lower()
+    assert "2026-09-01" in reason_prompt and "2026-09-03" in reason_prompt  # recaps both picked dates
+    assert ctx.bot.edited_messages[-1]["reply_markup"] == {"inline_keyboard": []}
+    state = await ctx.leave_application.get_state(ctx.telegram_user_id)
+    assert state.end_date == "2026-09-03"
 
+    ctx.update.callback_data = None
     ctx.update.text = "Family trip"
     await leave_handlers.handle_apply_leave_free_text(ctx)
     last = ctx.bot.sent_messages[-1]
@@ -185,24 +213,37 @@ async def test_apply_leave_free_text_walks_through_all_steps_to_confirmation():
     assert last["reply_markup"] is not None
 
 
-async def test_apply_leave_free_text_shows_friendly_message_for_bad_date():
+async def test_apply_leave_free_text_during_start_date_step_nudges_toward_calendar():
     leave = FakeLeaveEndpoint()
-    ctx = _ctx(FakeTelegramUpdate(text="not-a-date"), leave=leave)
+    ctx = _ctx(FakeTelegramUpdate(text="2026-09-01"), leave=leave)
     await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
 
     await leave_handlers.handle_apply_leave_free_text(ctx)
 
-    assert "doesn't look like a date" in ctx.bot.sent_messages[-1]["text"]
+    assert "calendar buttons" in ctx.bot.sent_messages[-1]["text"]
     state = await ctx.leave_application.get_state(ctx.telegram_user_id)
-    assert state.step == "start_date"  # unchanged — bad input must not advance the flow
+    assert state.step == "start_date"  # unchanged — free text must not advance the flow
+
+
+async def test_apply_leave_free_text_during_end_date_step_nudges_toward_calendar():
+    leave = FakeLeaveEndpoint()
+    ctx = _ctx(FakeTelegramUpdate(text="2026-09-03"), leave=leave)
+    await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
+    await ctx.leave_application.submit_start_date(ctx.telegram_user_id, date(2026, 9, 1))
+
+    await leave_handlers.handle_apply_leave_free_text(ctx)
+
+    assert "calendar buttons" in ctx.bot.sent_messages[-1]["text"]
+    state = await ctx.leave_application.get_state(ctx.telegram_user_id)
+    assert state.step == "end_date"  # unchanged
 
 
 async def test_apply_leave_confirm_submits_and_shows_result():
     leave = FakeLeaveEndpoint(apply_result=_PENDING_REQUEST)
     ctx = _ctx(FakeTelegramUpdate(callback_data="leave:apply:confirm", callback_query=FakeCallbackQuery()), leave=leave)
     await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
-    await ctx.leave_application.submit_start_date(ctx.telegram_user_id, "2026-09-01")
-    await ctx.leave_application.submit_end_date(ctx.telegram_user_id, "2026-09-03")
+    await ctx.leave_application.submit_start_date(ctx.telegram_user_id, date(2026, 9, 1))
+    await ctx.leave_application.submit_end_date(ctx.telegram_user_id, date(2026, 9, 3))
     await ctx.leave_application.submit_reason(ctx.telegram_user_id, "skip")
 
     await leave_handlers.handle_apply_leave_confirm(ctx)
@@ -216,8 +257,8 @@ async def test_apply_leave_confirm_shows_friendly_message_on_backend_rejection()
     leave = FakeLeaveEndpoint(raise_on_apply=make_hrms_error("overlapping_leave_request", status_code=422))
     ctx = _ctx(FakeTelegramUpdate(callback_data="leave:apply:confirm", callback_query=FakeCallbackQuery()), leave=leave)
     await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
-    await ctx.leave_application.submit_start_date(ctx.telegram_user_id, "2026-09-01")
-    await ctx.leave_application.submit_end_date(ctx.telegram_user_id, "2026-09-03")
+    await ctx.leave_application.submit_start_date(ctx.telegram_user_id, date(2026, 9, 1))
+    await ctx.leave_application.submit_end_date(ctx.telegram_user_id, date(2026, 9, 3))
     await ctx.leave_application.submit_reason(ctx.telegram_user_id, "skip")
 
     await leave_handlers.handle_apply_leave_confirm(ctx)
@@ -226,11 +267,12 @@ async def test_apply_leave_confirm_shows_friendly_message_on_backend_rejection()
 
 
 async def test_full_apply_leave_conversation_via_update_router():
-    """End-to-end: /apply_leave -> tap a type -> three free-text replies ->
-    tap confirm, routed entirely through update_router.route() the way
-    real Telegram webhooks would drive it — proves the free-text dispatch
-    wiring in update_router.py, not just the handler functions in
-    isolation."""
+    """End-to-end: /apply_leave -> tap a type -> tap two calendar days ->
+    one free-text reply (reason) -> tap confirm, routed entirely through
+    update_router.route() the way real Telegram webhooks would drive it —
+    proves both the free-text AND the "cal:" callback_prefix dispatch
+    wiring in update_router.py/registry.py, not just the handler functions
+    in isolation."""
     leave = FakeLeaveEndpoint(types=[_ANNUAL], apply_result=_PENDING_REQUEST)
     employees = FakeEmployeesEndpoint()
     redis = FakeRedis()
@@ -247,15 +289,31 @@ async def test_full_apply_leave_conversation_via_update_router():
     assert bot.sent_messages[-1]["reply_markup"] is not None
 
     await route(
-        FakeTelegramUpdate(callback_data="leave:apply:type:lt-annual", callback_query=FakeCallbackQuery()), deps, leave_handlers.registry
+        FakeTelegramUpdate(callback_data="leave:apply:type:lt-annual", callback_query=FakeCallbackQuery(message=FakeCallbackMessage())),
+        deps,
+        leave_handlers.registry,
     )
-    assert "start date" in bot.sent_messages[-1]["text"]
+    assert "From date" in bot.edited_messages[-1]["text"]
 
-    await route(FakeTelegramUpdate(text="2026-09-01"), deps, leave_handlers.registry)
-    assert "end date" in bot.sent_messages[-1]["text"]
+    await route(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{leave_handlers.PURPOSE_START_DATE}:day:202609:01",
+            callback_query=FakeCallbackQuery(message=FakeCallbackMessage()),
+        ),
+        deps,
+        leave_handlers.registry,
+    )
+    assert "To date" in bot.edited_messages[-1]["text"]
 
-    await route(FakeTelegramUpdate(text="2026-09-03"), deps, leave_handlers.registry)
-    assert "reason" in bot.sent_messages[-1]["text"].lower()
+    await route(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{leave_handlers.PURPOSE_END_DATE}:day:202609:03",
+            callback_query=FakeCallbackQuery(message=FakeCallbackMessage()),
+        ),
+        deps,
+        leave_handlers.registry,
+    )
+    assert "reason" in bot.edited_messages[-1]["text"].lower()
 
     await route(FakeTelegramUpdate(text="skip"), deps, leave_handlers.registry)
     assert "confirm" in bot.sent_messages[-1]["text"].lower()
