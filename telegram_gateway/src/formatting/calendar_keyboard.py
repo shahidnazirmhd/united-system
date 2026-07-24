@@ -117,10 +117,18 @@ def shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
     return index // 12, index % 12 + 1
 
 
-def build_calendar_keyboard(purpose: str, year: int, month: int) -> dict[str, Any]:
+def build_calendar_keyboard(purpose: str, year: int, month: int, *, label: str | None = None) -> dict[str, Any]:
     """A full month view: a month/year caption row, weekday initials, day-
     number buttons (Monday-first week, matching `calendar.Calendar`'s
-    default), then a Prev / Today / Next row and a Cancel row.
+    default), then a Prev / Today / Next row, an optional `label` row, and
+    a Cancel row.
+
+    `label` is opaque, caller-supplied plain text (Telegram button labels
+    don't render Markdown) rendered as its own single-button row directly
+    above Cancel — this widget has no opinion on what it says; a caller
+    uses it to show which step of a multi-date flow this calendar belongs
+    to (e.g. Leave's "🟢 FROM DATE — tap a day to select"), keeping that
+    module-specific wording entirely out of this file. Omitted when `None`.
 
     Raises ValueError (via the stdlib `calendar` module) if `month` isn't
     1-12 or `year`/`month` falls outside what `datetime.date` can
@@ -146,8 +154,8 @@ def build_calendar_keyboard(purpose: str, year: int, month: int) -> dict[str, An
             if day == 0:
                 row.append(_noop_button(" ", purpose=purpose, year=year, month=month))
                 continue
-            label = f"•{day}•" if is_current_month and day == today.day else str(day)
-            row.append({"text": label, "callback_data": _encode(purpose, ACTION_DAY, year, month, day)})
+            day_label = f"•{day}•" if is_current_month and day == today.day else str(day)
+            row.append({"text": day_label, "callback_data": _encode(purpose, ACTION_DAY, year, month, day)})
         rows.append(row)
 
     rows.append(
@@ -157,17 +165,24 @@ def build_calendar_keyboard(purpose: str, year: int, month: int) -> dict[str, An
             {"text": "Next ▶", "callback_data": _encode(purpose, ACTION_NEXT, year, month)},
         ]
     )
+    if label is not None:
+        rows.append([_noop_button(label, purpose=purpose, year=year, month=month)])
     rows.append([{"text": "❌ Cancel", "callback_data": _encode(purpose, ACTION_CANCEL, year, month)}])
     return {"inline_keyboard": rows}
 
 
-def build_month_picker_keyboard(purpose: str, year: int) -> dict[str, Any]:
+def build_month_picker_keyboard(purpose: str, year: int, *, label: str | None = None) -> dict[str, Any]:
     """The "jump straight to a month/year" view — opened by tapping the
     day-grid's own caption button. A year-only Prev/Next row (jumps 12
     months per tap, not one) followed by all 12 months of that year as
     buttons, so reaching e.g. December 2027 from "now" is two taps (Next
     year, Dec) instead of fifteen (Next month x15). Tapping a month
-    returns to `build_calendar_keyboard` for that (year, month)."""
+    returns to `build_calendar_keyboard` for that (year, month).
+
+    `label` is the same opaque, caller-supplied footer row
+    `build_calendar_keyboard` accepts — carried over here so the "which
+    date am I picking" indicator stays visible while a caller detours
+    through this view too, not just on the day grid."""
     today = date.today()
     rows: list[list[dict[str, str]]] = [
         [
@@ -180,9 +195,11 @@ def build_month_picker_keyboard(purpose: str, year: int) -> dict[str, Any]:
         row: list[dict[str, str]] = []
         for m in range(row_start, row_start + 3):
             is_current = (year, m) == (today.year, today.month)
-            label = f"•{_MONTH_ABBREVIATIONS[m]}•" if is_current else _MONTH_ABBREVIATIONS[m]
-            row.append({"text": label, "callback_data": _encode(purpose, ACTION_MONTH_PICK, year, m)})
+            month_label = f"•{_MONTH_ABBREVIATIONS[m]}•" if is_current else _MONTH_ABBREVIATIONS[m]
+            row.append({"text": month_label, "callback_data": _encode(purpose, ACTION_MONTH_PICK, year, m)})
         rows.append(row)
+    if label is not None:
+        rows.append([_noop_button(label, purpose=purpose, year=year, month=1)])
     rows.append([{"text": "❌ Cancel", "callback_data": _encode(purpose, ACTION_CANCEL, year, 1)}])
     return {"inline_keyboard": rows}
 

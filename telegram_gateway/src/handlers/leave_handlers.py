@@ -18,6 +18,17 @@ Start/end date entry is `handlers/calendar_widget.py`'s generic inline
 calendar (see PURPOSE_START_DATE/PURPOSE_END_DATE below and
 `TELEGRAM_GATEWAY.md` §3b) — this file only supplies the two "what happens
 once a date is picked" callbacks, never any calendar UI/grid logic itself.
+The `label=` argument on each `on_date_selected` registration is this
+module's own From/To visual indicator, rendered by the widget as a row
+below the day grid and above Cancel — see `formatting/leave_formatter.py`'s
+`format_apply_leave_footer_start_date`/`_end_date`.
+
+Every callback below that answers by sending a NEW message
+(`ctx.reply(...)`) rather than editing the one the tap came from first
+calls `ctx.clear_reply_markup()` — Telegram doesn't disable a button once
+it's tapped, so without this, a leave type/leave request/Confirm button
+would stay tappable (and re-triggerable) on an old message indefinitely.
+The message's text is left untouched, only its buttons are removed.
 """
 from __future__ import annotations
 
@@ -35,9 +46,11 @@ from src.formatting.keyboards import (
 )
 from src.formatting.leave_formatter import (
     format_apply_leave_confirmation,
-    format_apply_leave_prompt_end_date,
+    format_apply_leave_footer_end_date,
+    format_apply_leave_footer_start_date,
+    format_apply_leave_header_end_date,
+    format_apply_leave_header_start_date,
     format_apply_leave_prompt_reason,
-    format_apply_leave_prompt_start_date,
     format_cancel_leave_confirm_prompt,
     format_cancel_leave_prompt,
     format_leave_applied,
@@ -145,39 +158,53 @@ async def handle_apply_leave_type_selected(ctx: HandlerContext) -> None:
     try:
         leave_types = await ctx.leave.list_types()
     except GatewayError as exc:
+        # Nothing usable came of this tap — strip the type-selection
+        # buttons before replying so they can't be tapped again for a
+        # retry that would just fail the same way (see
+        # HandlerContext.clear_reply_markup's docstring).
+        await ctx.clear_reply_markup()
         await ctx.reply(friendly_message_for(exc))
         return
     selected = next((lt for lt in leave_types if lt.id == leave_type_id), None)
     if selected is None:
+        await ctx.clear_reply_markup()
         await ctx.reply("That leave type is no longer available. Send /apply_leave to try again.")
         return
 
     await ctx.leave_application.start(
         telegram_user_id=ctx.telegram_user_id, leave_type_id=selected.id, leave_type_name=selected.name
     )
+    # Success path edits this SAME message into the calendar (see
+    # start_calendar_flow) — its buttons are replaced, not left stale, so
+    # no separate clear_reply_markup() call is needed here.
     await calendar_widget.start_calendar_flow(ctx, purpose=PURPOSE_START_DATE)
 
 
 @registry.callback("leave:apply:abort")
 async def handle_apply_leave_abort(ctx: HandlerContext) -> None:
     await ctx.answer_callback(text="Cancelled.")
+    await ctx.clear_reply_markup()
     await ctx.leave_application.cancel(ctx.telegram_user_id)
     await ctx.reply("No leave application was submitted.")
 
 
-async def _end_date_prompt(ctx: HandlerContext) -> str:
-    """The end-date calendar's prompt is dynamic, not a fixed string —
-    resolved fresh every time that calendar (or its month/year picker) is
-    rendered, so it always echoes back whatever From date is actually in
-    the conversation's state right now, however many times the employee
-    pages around before tapping a day. See calendar_widget.py's
-    PromptFactory."""
+async def _end_date_header(ctx: HandlerContext) -> str:
+    """The end-date calendar's message text (header) is dynamic, not a
+    fixed string — resolved fresh every time that calendar (or its
+    month/year picker) is rendered, so it always echoes back whatever From
+    date is actually in the conversation's state right now, however many
+    times the employee pages around before tapping a day. See
+    calendar_widget.py's PromptFactory."""
     state = await ctx.leave_application.get_state(ctx.telegram_user_id)
     from_date = state.start_date if state is not None else None
-    return format_apply_leave_prompt_end_date(from_date=from_date)
+    return format_apply_leave_header_end_date(from_date=from_date)
 
 
-@calendar_widget.on_date_selected(PURPOSE_START_DATE, prompt=format_apply_leave_prompt_start_date())
+@calendar_widget.on_date_selected(
+    PURPOSE_START_DATE,
+    prompt=format_apply_leave_header_start_date(),
+    label=format_apply_leave_footer_start_date(),
+)
 async def _handle_start_date_picked(ctx: HandlerContext, value: date | None) -> None:
     """Invoked by handlers/calendar_widget.py once a start date is picked
     (or the picker cancelled — `value` is None). Never called for free
@@ -189,6 +216,7 @@ async def _handle_start_date_picked(ctx: HandlerContext, value: date | None) -> 
         await ctx.leave_application.submit_start_date(ctx.telegram_user_id, value)
     except GatewayError as exc:
         log_event(logger, logging.INFO, "apply_leave_step_failed", telegram_user_id=ctx.telegram_user_id, error=str(exc))
+        await ctx.clear_reply_markup()
         await ctx.reply(friendly_message_for(exc))
         return
     # Anchor the end-date calendar on the just-picked start date, not
@@ -197,7 +225,11 @@ async def _handle_start_date_picked(ctx: HandlerContext, value: date | None) -> 
     await calendar_widget.start_calendar_flow(ctx, purpose=PURPOSE_END_DATE, anchor=value)
 
 
-@calendar_widget.on_date_selected(PURPOSE_END_DATE, prompt=_end_date_prompt)
+@calendar_widget.on_date_selected(
+    PURPOSE_END_DATE,
+    prompt=_end_date_header,
+    label=format_apply_leave_footer_end_date(),
+)
 async def _handle_end_date_picked(ctx: HandlerContext, value: date | None) -> None:
     if value is None:
         await ctx.leave_application.cancel(ctx.telegram_user_id)
@@ -206,6 +238,7 @@ async def _handle_end_date_picked(ctx: HandlerContext, value: date | None) -> No
         new_state = await ctx.leave_application.submit_end_date(ctx.telegram_user_id, value)
     except GatewayError as exc:
         log_event(logger, logging.INFO, "apply_leave_step_failed", telegram_user_id=ctx.telegram_user_id, error=str(exc))
+        await ctx.clear_reply_markup()
         await ctx.reply(friendly_message_for(exc))
         return
     # Reason is still free text — clear the calendar's buttons rather than
@@ -263,6 +296,11 @@ async def handle_apply_leave_free_text(ctx: HandlerContext) -> None:
 @registry.callback("leave:apply:confirm")
 async def handle_apply_leave_confirm(ctx: HandlerContext) -> None:
     await ctx.answer_callback()
+    # Strip the Confirm/Cancel buttons the instant this is tapped, before
+    # calling submit() — prevents a double-tap (or a slow response) from
+    # letting the same request be submitted twice via a stale Confirm
+    # button, regardless of whether submit() below succeeds or fails.
+    await ctx.clear_reply_markup()
     try:
         result = await ctx.leave_application.submit(ctx.telegram_user_id)
     except GatewayError as exc:
@@ -337,6 +375,10 @@ async def handle_cancel_leave_start(ctx: HandlerContext) -> None:
 @registry.callback_prefix("leave:cancel:select:")
 async def handle_cancel_leave_selected(ctx: HandlerContext) -> None:
     await ctx.answer_callback()
+    # Strip this list's buttons as soon as one request is picked, so a
+    # second, stale tap on the same list can't start a second concurrent
+    # cancel flow.
+    await ctx.clear_reply_markup()
     data = ctx.update.callback_data or ""
     leave_request_id = data.removeprefix("leave:cancel:select:")
 
@@ -354,6 +396,9 @@ async def handle_cancel_leave_selected(ctx: HandlerContext) -> None:
 @registry.callback_prefix("leave:cancel:confirm:")
 async def handle_cancel_leave_confirmed(ctx: HandlerContext) -> None:
     await ctx.answer_callback()
+    # Same reasoning as handle_apply_leave_confirm: strip Confirm/Abort
+    # before doing the actual cancel, so a double-tap can't attempt it twice.
+    await ctx.clear_reply_markup()
     data = ctx.update.callback_data or ""
     leave_request_id = data.removeprefix("leave:cancel:confirm:")
 
@@ -371,4 +416,5 @@ async def handle_cancel_leave_confirmed(ctx: HandlerContext) -> None:
 @registry.callback("leave:cancel:abort")
 async def handle_cancel_leave_aborted(ctx: HandlerContext) -> None:
     await ctx.answer_callback(text="Cancelled.")
+    await ctx.clear_reply_markup()
     await ctx.reply("No changes made.")

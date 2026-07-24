@@ -133,7 +133,10 @@ async def test_apply_leave_type_selected_starts_conversation():
     """Now that dates are calendar-only, picking a leave type must edit
     the SAME message (replacing the type-selection buttons with the
     calendar) rather than sending a new one — see handlers/calendar_widget
-    .py's start_calendar_flow, which this handler now calls."""
+    .py's start_calendar_flow, which this handler now calls. The "From
+    date" instruction itself now lives in the calendar's own footer label
+    (below the grid, above Cancel), not the message text above it — see
+    format_apply_leave_footer_start_date."""
     leave = FakeLeaveEndpoint(types=[_ANNUAL, _SICK])
     ctx = _ctx(
         FakeTelegramUpdate(callback_data="leave:apply:type:lt-annual", callback_query=FakeCallbackQuery()),
@@ -146,8 +149,11 @@ async def test_apply_leave_type_selected_starts_conversation():
     assert state.leave_type_id == "lt-annual"
     assert state.leave_type_name == "Annual Leave"
     assert ctx.bot.sent_messages == []
-    assert "From date" in ctx.bot.edited_messages[-1]["text"]
-    assert ctx.bot.edited_messages[-1]["reply_markup"]["inline_keyboard"]  # the calendar grid
+    edited = ctx.bot.edited_messages[-1]
+    assert "Apply Leave" in edited["text"]
+    assert edited["reply_markup"]["inline_keyboard"]  # the calendar grid
+    labels = [b["text"] for row in edited["reply_markup"]["inline_keyboard"] for b in row]
+    assert any("FROM DATE" in label for label in labels)  # the From/To visual indicator
 
 
 async def test_apply_leave_type_selected_rejects_unknown_type():
@@ -161,6 +167,20 @@ async def test_apply_leave_type_selected_rejects_unknown_type():
 
     assert "no longer available" in ctx.bot.sent_messages[-1]["text"]
     assert await ctx.leave_application.is_active(ctx.telegram_user_id) is False
+    assert len(ctx.bot.cleared_markups) == 1  # the now-stale type-selection buttons were stripped
+
+
+async def test_apply_leave_type_selected_shows_friendly_message_when_types_fetch_fails():
+    leave = FakeLeaveEndpoint(raise_on_list_types=make_hrms_error("backend_unreachable", status_code=503))
+    ctx = _ctx(
+        FakeTelegramUpdate(callback_data="leave:apply:type:lt-annual", callback_query=FakeCallbackQuery()),
+        leave=leave,
+    )
+
+    await leave_handlers.handle_apply_leave_type_selected(ctx)
+
+    assert "trouble reaching" in ctx.bot.sent_messages[-1]["text"]
+    assert len(ctx.bot.cleared_markups) == 1
 
 
 async def test_apply_leave_abort_clears_state():
@@ -172,6 +192,7 @@ async def test_apply_leave_abort_clears_state():
 
     assert await ctx.leave_application.is_active(ctx.telegram_user_id) is False
     assert "No leave application was submitted" in ctx.bot.sent_messages[-1]["text"]
+    assert len(ctx.bot.cleared_markups) == 1  # the confirmation prompt's own buttons were stripped
 
 
 async def test_apply_leave_calendar_walks_through_start_and_end_date_to_reason_prompt():
@@ -189,9 +210,10 @@ async def test_apply_leave_calendar_walks_through_start_and_end_date_to_reason_p
     await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
 
     await calendar_widget.handle_calendar_callback(ctx)
-    end_date_prompt = ctx.bot.edited_messages[-1]["text"]
-    assert "To date" in end_date_prompt
-    assert "2026-09-01" in end_date_prompt  # the From date is echoed back, per the new "make it clear" requirement
+    end_date_message = ctx.bot.edited_messages[-1]
+    assert "2026-09-01" in end_date_message["text"]  # the From date is echoed back in the header
+    end_date_labels = [b["text"] for row in end_date_message["reply_markup"]["inline_keyboard"] for b in row]
+    assert any("TO DATE" in label for label in end_date_labels)  # the From/To visual indicator
     state = await ctx.leave_application.get_state(ctx.telegram_user_id)
     assert state.start_date == "2026-09-01"
 
@@ -251,6 +273,7 @@ async def test_apply_leave_confirm_submits_and_shows_result():
     text = ctx.bot.sent_messages[-1]["text"]
     assert "submitted" in text
     assert "req-1" in text
+    assert len(ctx.bot.cleared_markups) == 1  # Confirm/Cancel buttons stripped so it can't be double-tapped
 
 
 async def test_apply_leave_confirm_shows_friendly_message_on_backend_rejection():
@@ -264,6 +287,25 @@ async def test_apply_leave_confirm_shows_friendly_message_on_backend_rejection()
     await leave_handlers.handle_apply_leave_confirm(ctx)
 
     assert "overlap" in ctx.bot.sent_messages[-1]["text"]
+    assert len(ctx.bot.cleared_markups) == 1
+
+
+async def test_apply_leave_confirm_shows_backdated_message_not_a_generic_error():
+    """past_leave_start_date must surface the specific "contact HR" text,
+    never the generic fallback — see errors.py's _FRIENDLY_MESSAGES."""
+    leave = FakeLeaveEndpoint(raise_on_apply=make_hrms_error("past_leave_start_date", status_code=422))
+    ctx = _ctx(FakeTelegramUpdate(callback_data="leave:apply:confirm", callback_query=FakeCallbackQuery()), leave=leave)
+    await ctx.leave_application.start(telegram_user_id=ctx.telegram_user_id, leave_type_id="lt-annual", leave_type_name="Annual Leave")
+    await ctx.leave_application.submit_start_date(ctx.telegram_user_id, date(2020, 1, 1))
+    await ctx.leave_application.submit_end_date(ctx.telegram_user_id, date(2020, 1, 3))
+    await ctx.leave_application.submit_reason(ctx.telegram_user_id, "skip")
+
+    await leave_handlers.handle_apply_leave_confirm(ctx)
+
+    text = ctx.bot.sent_messages[-1]["text"]
+    assert "Backdated leave requests cannot be submitted through Telegram" in text
+    assert "contact HR department" in text
+    assert "Something went wrong" not in text
 
 
 async def test_full_apply_leave_conversation_via_update_router():
@@ -293,7 +335,8 @@ async def test_full_apply_leave_conversation_via_update_router():
         deps,
         leave_handlers.registry,
     )
-    assert "From date" in bot.edited_messages[-1]["text"]
+    start_labels = [b["text"] for row in bot.edited_messages[-1]["reply_markup"]["inline_keyboard"] for b in row]
+    assert any("FROM DATE" in label for label in start_labels)
 
     await route(
         FakeTelegramUpdate(
@@ -303,7 +346,9 @@ async def test_full_apply_leave_conversation_via_update_router():
         deps,
         leave_handlers.registry,
     )
-    assert "To date" in bot.edited_messages[-1]["text"]
+    assert "2026-09-01" in bot.edited_messages[-1]["text"]
+    end_labels = [b["text"] for row in bot.edited_messages[-1]["reply_markup"]["inline_keyboard"] for b in row]
+    assert any("TO DATE" in label for label in end_labels)
 
     await route(
         FakeTelegramUpdate(
@@ -356,7 +401,7 @@ async def test_leave_history_empty_shows_friendly_message():
 
     await leave_handlers.handle_leave_history(ctx)
 
-    assert "don't have any leave requests" in ctx.bot.sent_messages[0]["text"]
+    assert ctx.bot.sent_messages[0]["text"] == "No leave history found."
 
 
 async def test_leave_request_detail_requires_an_id():
@@ -423,6 +468,7 @@ async def test_cancel_leave_selected_shows_confirmation():
     sent = ctx.bot.sent_messages[-1]
     assert "Cancel this request" in sent["text"]
     assert sent["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "leave:cancel:confirm:req-1"
+    assert len(ctx.bot.cleared_markups) == 1  # the request-selection list's buttons were stripped
 
 
 async def test_cancel_leave_confirmed_cancels_and_shows_result():
@@ -441,6 +487,7 @@ async def test_cancel_leave_confirmed_cancels_and_shows_result():
 
     assert leave.cancel_calls[0]["leave_request_id"] == "req-1"
     assert "cancelled" in ctx.bot.sent_messages[-1]["text"]
+    assert len(ctx.bot.cleared_markups) == 1  # the Confirm/Abort prompt's buttons were stripped
 
 
 async def test_cancel_leave_confirmed_shows_friendly_message_on_error():
@@ -452,6 +499,7 @@ async def test_cancel_leave_confirmed_shows_friendly_message_on_error():
     await leave_handlers.handle_cancel_leave_confirmed(ctx)
 
     assert "no longer be cancelled" in ctx.bot.sent_messages[-1]["text"]
+    assert len(ctx.bot.cleared_markups) == 1
 
 
 async def test_cancel_leave_aborted_makes_no_changes():
@@ -460,3 +508,4 @@ async def test_cancel_leave_aborted_makes_no_changes():
     await leave_handlers.handle_cancel_leave_aborted(ctx)
 
     assert "No changes made" in ctx.bot.sent_messages[-1]["text"]
+    assert len(ctx.bot.cleared_markups) == 1

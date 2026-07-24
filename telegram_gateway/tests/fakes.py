@@ -198,6 +198,7 @@ class FakeBotAPIClient:
         self.sent_messages: list[dict] = []
         self.edited_messages: list[dict] = []
         self.answered_callbacks: list[dict] = []
+        self.cleared_markups: list[dict] = []
         self.raise_on_edit_message = raise_on_edit_message
 
     async def send_message(self, *, chat_id, text, reply_markup=None, parse_mode="Markdown"):
@@ -210,6 +211,9 @@ class FakeBotAPIClient:
         self.edited_messages.append(
             {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": reply_markup}
         )
+
+    async def edit_message_reply_markup(self, *, chat_id, message_id, reply_markup=None):
+        self.cleared_markups.append({"chat_id": chat_id, "message_id": message_id, "reply_markup": reply_markup})
 
     async def answer_callback_query(self, *, callback_query_id, text=None, show_alert=False):
         self.answered_callbacks.append({"callback_query_id": callback_query_id, "text": text})

@@ -119,7 +119,8 @@ _FRIENDLY_MESSAGES: dict[str, str] = {
     "leave_type_not_found": "That leave type isn't available anymore. Send /apply_leave to see the current list.",
     "leave_request_not_found": "We couldn't find that leave request.",
     "invalid_leave_date_range": "The end date can't be before the start date. Send /apply_leave to try again.",
-    "past_leave_start_date": "Leave can't start in the past. Send /apply_leave to try again with a future date.",
+    "past_leave_start_date": "Backdated leave requests cannot be submitted through Telegram. Please contact HR "
+    "department.",
     "duplicate_leave_request": "You already have a leave request for those exact dates.",
     "overlapping_leave_request": "Those dates overlap with another pending or approved leave request you already "
     "have. Send /leave_history to check your existing requests.",

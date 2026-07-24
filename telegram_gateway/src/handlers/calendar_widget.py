@@ -33,6 +33,15 @@ navigating months on the end-date calendar never loses track of what
 they've already chosen. A plain string is exactly equivalent to an async
 callable that always returns that string — most purposes don't need
 anything dynamic and can just pass one.
+
+A purpose can also register a `label` (same str-or-async-callable shape),
+rendered by `calendar_keyboard.py` as a single row directly above Cancel —
+below the whole day grid, not above it. Telegram always shows a message's
+own `text` above any inline keyboard attached to it, so this is the only
+way to put purpose-specific wording visually *below* the grid; it's also
+plain text only (button labels don't support Markdown), unlike `prompt`.
+Leave uses `label` as its "which date am I picking" indicator (🟢 FROM
+DATE / 🔵 TO DATE) — see `handlers/leave_handlers.py`.
 """
 from __future__ import annotations
 
@@ -85,21 +94,25 @@ _CANCELLED_TEXT = "❌ Cancelled."
 class _CalendarPurpose:
     prompt: PromptSource
     on_result: CalendarResultHandler
+    label: PromptSource | None = None
 
 
 _purposes: dict[str, _CalendarPurpose] = {}
 
 
-def on_date_selected(purpose: str, *, prompt: PromptSource) -> Callable[[CalendarResultHandler], CalendarResultHandler]:
+def on_date_selected(
+    purpose: str, *, prompt: PromptSource, label: PromptSource | None = None
+) -> Callable[[CalendarResultHandler], CalendarResultHandler]:
     """Decorator: registers what happens once a date is picked (or
-    cancelled) for `purpose`, and the message text shown while that
-    purpose's calendar/month-picker is on screen — either a fixed string,
-    or an async function of `HandlerContext` resolved fresh every render
-    (see module docstring). Call this once, at module import time, exactly
-    like `registry.command`/`registry.callback`."""
+    cancelled) for `purpose`, the message text shown while that purpose's
+    calendar/month-picker is on screen (`prompt`), and an optional footer
+    row shown inside the keyboard itself, just above Cancel (`label`) —
+    each either a fixed string, or an async function of `HandlerContext`
+    resolved fresh every render (see module docstring). Call this once, at
+    module import time, exactly like `registry.command`/`registry.callback`."""
 
     def decorator(func: CalendarResultHandler) -> CalendarResultHandler:
-        _purposes[purpose] = _CalendarPurpose(prompt=prompt, on_result=func)
+        _purposes[purpose] = _CalendarPurpose(prompt=prompt, on_result=func, label=label)
         return func
 
     return decorator
@@ -111,6 +124,12 @@ async def _resolve_prompt(prompt: PromptSource, ctx: HandlerContext) -> str:
     return await prompt(ctx)
 
 
+async def _resolve_label(label: PromptSource | None, ctx: HandlerContext) -> str | None:
+    if label is None:
+        return None
+    return await _resolve_prompt(label, ctx)
+
+
 async def start_calendar_flow(ctx: HandlerContext, *, purpose: str, anchor: date | None = None) -> None:
     """Shows the calendar for `purpose` for the first time, defaulting to
     the month containing `anchor` (or today, if not given — e.g. Leave
@@ -118,7 +137,8 @@ async def start_calendar_flow(ctx: HandlerContext, *, purpose: str, anchor: date
     isn't needed for the common case of a short leave request)."""
     entry = _purposes[purpose]
     target = anchor or date.today()
-    keyboard = build_calendar_keyboard(purpose, target.year, target.month)
+    label = await _resolve_label(entry.label, ctx)
+    keyboard = build_calendar_keyboard(purpose, target.year, target.month, label=label)
     text = await _resolve_prompt(entry.prompt, ctx)
 
     callback_query = ctx.update.callback_query
@@ -155,13 +175,15 @@ async def handle_calendar_callback(ctx: HandlerContext) -> None:
             # paging into a nonsensical year (see calendar_keyboard.py's
             # MIN_YEAR/MAX_YEAR docstring).
             return
-        keyboard = build_calendar_keyboard(parsed.purpose, new_year, new_month)
+        label = await _resolve_label(entry.label, ctx)
+        keyboard = build_calendar_keyboard(parsed.purpose, new_year, new_month, label=label)
         await ctx.edit_message(await _resolve_prompt(entry.prompt, ctx), reply_markup=keyboard)
         return
 
     if parsed.action == ACTION_OPEN_MONTH_PICKER:
         await ctx.answer_callback()
-        keyboard = build_month_picker_keyboard(parsed.purpose, parsed.year)
+        label = await _resolve_label(entry.label, ctx)
+        keyboard = build_month_picker_keyboard(parsed.purpose, parsed.year, label=label)
         await ctx.edit_message(await _resolve_prompt(entry.prompt, ctx), reply_markup=keyboard)
         return
 
@@ -170,13 +192,15 @@ async def handle_calendar_callback(ctx: HandlerContext) -> None:
         new_year = parsed.year + (-1 if parsed.action == ACTION_MONTH_PICKER_PREV_YEAR else 1)
         if not (MIN_YEAR <= new_year <= MAX_YEAR):
             return
-        keyboard = build_month_picker_keyboard(parsed.purpose, new_year)
+        label = await _resolve_label(entry.label, ctx)
+        keyboard = build_month_picker_keyboard(parsed.purpose, new_year, label=label)
         await ctx.edit_message(await _resolve_prompt(entry.prompt, ctx), reply_markup=keyboard)
         return
 
     if parsed.action == ACTION_MONTH_PICK:
         await ctx.answer_callback()
-        keyboard = build_calendar_keyboard(parsed.purpose, parsed.year, parsed.month)
+        label = await _resolve_label(entry.label, ctx)
+        keyboard = build_calendar_keyboard(parsed.purpose, parsed.year, parsed.month, label=label)
         await ctx.edit_message(await _resolve_prompt(entry.prompt, ctx), reply_markup=keyboard)
         return
 

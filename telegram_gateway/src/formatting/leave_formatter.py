@@ -60,7 +60,7 @@ def format_leave_request_summary_line(request: LeaveRequest) -> str:
 
 def format_leave_history(page: LeaveHistoryPage) -> str:
     if not page.items:
-        return "You don't have any leave requests yet. Send /apply_leave to create one."
+        return "No leave history found."
 
     lines = ["*Your Leave History*\n"]
     for request in page.items:
@@ -88,19 +88,42 @@ def format_leave_request_detail(request: LeaveRequest) -> str:
     return "\n".join(lines)
 
 
-def format_apply_leave_prompt_start_date() -> str:
-    return "📅 Select your *From date* using the calendar below."
+def format_apply_leave_header_start_date() -> str:
+    """The From-date calendar's message text (shown above the whole
+    keyboard — Telegram always renders a message's `text` above any
+    `reply_markup` attached to it, with no way to place text after
+    buttons). Deliberately short and generic: the actual "select a date"
+    instruction, plus the visual From/To indicator, live in the calendar's
+    own footer label instead — see format_apply_leave_footer_start_date —
+    positioned below the day grid and above Cancel, not above it."""
+    return "🏖️ *Apply Leave*"
 
 
-def format_apply_leave_prompt_end_date(*, from_date: str | None = None) -> str:
-    """`from_date` (ISO string), when known, is echoed back so the employee
-    can see what they already picked while choosing the To date — see
-    handlers/leave_handlers.py's dynamic calendar prompt for the End Date
-    purpose, which is the only caller that ever has it."""
-    prompt = "📅 Now select your *To date*."
+def format_apply_leave_footer_start_date() -> str:
+    """Plain text — Telegram button labels don't render Markdown — shown
+    as the From-date calendar's own last row before Cancel. Doubles as the
+    visual indicator of which date is currently being picked (🟢 = From),
+    per handlers/calendar_widget.py's `label` mechanism."""
+    return "🟢 FROM DATE — tap a day to select"
+
+
+def format_apply_leave_header_end_date(*, from_date: str | None = None) -> str:
+    """`from_date` (ISO string), when known, is echoed back as the To-date
+    calendar's message text — this is real message text (unlike the
+    footer label below), so it can use Markdown — so the employee can
+    always see what they already picked while choosing the To date. Falls
+    back to the same generic header as the From-date step if, defensively,
+    no From date is known yet (should be unreachable in practice — see
+    handlers/leave_handlers.py's dynamic calendar prompt for this purpose,
+    the only caller)."""
     if from_date is None:
-        return prompt
-    return f"✅ *From date:* {from_date}\n\n{prompt}"
+        return format_apply_leave_header_start_date()
+    return f"✅ *From date:* {from_date}"
+
+
+def format_apply_leave_footer_end_date() -> str:
+    """See format_apply_leave_footer_start_date — same mechanism, 🔵 = To."""
+    return "🔵 TO DATE — tap a day to select"
 
 
 def format_apply_leave_prompt_reason(*, from_date: str | None = None, to_date: str | None = None) -> str:

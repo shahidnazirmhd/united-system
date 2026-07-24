@@ -146,17 +146,26 @@ Employee replies with free text (reason, or "skip") — the one step still
         ▼
 Gateway shows a summary + Confirm/Cancel inline keyboard
         │        callback_data: "leave:apply:confirm" / "leave:apply:abort"
+        │        (tapping either immediately strips this message's own
+        │        buttons — see "Stale buttons get stripped" below)
         ├─ Cancel tapped → conversation state cleared, "No leave application was submitted."
         └─ Confirm tapped → Gateway calls
                  POST /api/v1/leave/telegram/requests/apply/
                  │
                  ├─ 422 insufficient_leave_balance / overlapping_leave_request /
                  │        duplicate_leave_request / past_leave_start_date / invalid_leave_date_range
-                 │        → friendly error; state is cleared either way (submit() always clears
-                 │        state, success or failure — a rejected application isn't stale, it's over,
-                 │        and /apply_leave starts a clean one)
+                 │        → friendly error (past_leave_start_date's is deliberately specific —
+                 │        "Backdated leave requests cannot be submitted through Telegram. Please
+                 │        contact HR department." — never the generic fallback); state is
+                 │        cleared either way (submit() always clears state, success or failure —
+                 │        a rejected application isn't stale, it's over, and /apply_leave starts
+                 │        a clean one)
                  └─ 201 → "Leave request submitted" confirmation, showing the new request's id
 ```
+
+**Stale buttons get stripped, not left dangling.** Telegram never disables a button once it's tapped — the message it's attached to keeps showing it, tappable, until something explicitly edits that message. Every callback in `leave_handlers.py` whose next step is a brand-new message (`ctx.reply(...)`) rather than an edit to the one the tap came from (`ctx.edit_message(...)`) calls `HandlerContext.clear_reply_markup()` first (wraps Telegram's `editMessageReplyMarkup` — text untouched, keyboard emptied): the leave-type list on an error, the "confirm your application" prompt the instant Confirm *or* Cancel is tapped (before the outcome is even known, so a slow response or a double-tap can't submit twice), and both the cancel-request picker list and its own Confirm/Abort prompt. Flows that already edit the same message in place (the calendar's own Prev/Next/Today, the type→calendar transition) don't need it — there's nothing stale to strip, the message was just replaced.
+
+**Leave history / cancel list, empty.** `/leave_history` and `/cancel_leave` both call the same backend list endpoint, which returns `200` with an empty `items` list (not a "not found" error) when there's nothing to show. `leave_formatter.format_leave_history` renders that as "No leave history found."; `handle_cancel_leave_start` renders the same empty-cancellable-list case as "You don't have any pending or approved leave requests to cancel." — neither is ever the generic error fallback.
 
 **Where the free-text steps get routed.** `webhook/update_router.py`'s message routing checks, in order: is an OTP verification pending (`auth/account_linking.py`) — checked first since it's the older, narrower flow — then is an Apply Leave conversation active (`ctx.leave_application.is_active()`); only if neither is true does plain text fall through to "I didn't understand that." Free text arriving while the conversation is mid-calendar (start/end date step) doesn't attempt to parse it as a date at all anymore — it nudges the employee back to the calendar buttons instead (`handlers/leave_handlers.py`'s `handle_apply_leave_free_text`). Reason is still genuinely free text and mirrors `link_handler.handle_otp_reply`'s precedent exactly.
 
@@ -171,12 +180,18 @@ Leave's start/end date steps are the first, but not the only intended, consumer 
 - **`formatting/calendar_keyboard.py`** — pure, stateless. `build_calendar_keyboard(purpose, year, month)` returns one month's `InlineKeyboardMarkup` (a tappable month/year caption row, weekday headers, day-number buttons Monday-first, a Prev/Today/Next row, a Cancel row) built entirely from the standard library `calendar` module — deliberately no third-party calendar package. `build_month_picker_keyboard(purpose, year)` returns the second view the caption row opens: a year-only Prev/Next row plus all 12 months of that year as buttons, so reaching a month many pages away (e.g. December next year) is two taps — Next-year, then the month — instead of paging Next one month at a time. `parse_calendar_callback(data)` decodes a button's callback_data back into `(purpose, action, year, month, day)`, returning `None` (never raising) for anything that doesn't look like this widget's own data. `shift_month(year, month, delta)` is the pure month-arithmetic day-grid Prev/Next relies on. `MIN_YEAR`/`MAX_YEAR` (1970–2100) bound how far either view's navigation can page — the stdlib `calendar` module doesn't itself reject year 0 or negative years, so without an explicit limit repeated Prev taps would page backward forever into nonsensical dates.
 - **`handlers/calendar_widget.py`** — the dispatch half, registered once via `@registry.callback_prefix("cal:")`. A consuming module calls `register once, at import time`:
   ```python
-  @calendar_widget.on_date_selected("leave.apply.start", prompt="📅 Select your *From date* ...")
+  @calendar_widget.on_date_selected(
+      "leave.apply.start",
+      prompt=format_apply_leave_header_start_date,   # message text, shown ABOVE the whole keyboard
+      label=format_apply_leave_footer_start_date,    # plain-text row shown BELOW the grid, above Cancel
+  )
   async def _on_start_date_picked(ctx, value: date | None) -> None:
       ...  # value is None if the picker was cancelled
   ```
   and kicks a calendar off with `await calendar_widget.start_calendar_flow(ctx, purpose="leave.apply.start", anchor=some_date)`. Everything else — Prev/Next paging on either view, opening/closing the month picker, the "Today" quick-pick, Cancel (edits the message to "❌ Cancelled.", clears its keyboard, then still calls the registered handler with `None` so the owning module can clean up its own state) — is handled generically, with zero knowledge of what "leave.apply.start" means. `purpose` strings use `.`/`_` internally, never `:` (reserved as `calendar_keyboard.py`'s own callback_data field separator — enforced by an assertion, not just convention).
-- **`prompt` can be a plain string, or an async function of `HandlerContext`** (`Callable[[HandlerContext], Awaitable[str]]`), resolved fresh every time that purpose's view is rendered — navigating months, opening the month picker, all of it. Leave's end-date purpose uses this: its prompt reads the conversation's own state and echoes back whatever From date was already picked ("✅ *From date:* 2026-09-01 ... now select your *To date*"), so an employee paging around the end-date calendar never loses track of what they've already chosen. A plain string behaves exactly like a callable that always returns it — most purposes don't need anything dynamic.
+- **`prompt` and `label` can each be a plain string, or an async function of `HandlerContext`** (`Callable[[HandlerContext], Awaitable[str]]`), resolved fresh every time that purpose's view is rendered — navigating months, opening the month picker, all of it. A plain string behaves exactly like a callable that always returns it — most purposes don't need anything dynamic.
+  - `prompt` is real message `text`, so it can use Markdown, and Telegram always renders it *above* the whole keyboard — there's no API-level way to put text after buttons in one message. Leave's end-date purpose uses a callable prompt that reads the conversation's own state and echoes back the already-picked From date ("✅ *From date:* 2026-09-01"), so an employee paging around the end-date calendar never loses track of what they've already chosen.
+  - `label` is `calendar_keyboard.py`'s own opaque, caller-supplied footer row — a single, non-interactive button rendered directly above Cancel, *below* the day grid (or the month/year picker's grid). Since Telegram button text never renders Markdown, `label` must be plain text. This is the only way to show purpose-specific wording visually under the grid rather than above it, and it's what Leave uses for its From/To visual indicator: "🟢 FROM DATE — tap a day to select" on the start-date calendar, "🔵 TO DATE — tap a day to select" on the end-date one (`formatting/leave_formatter.py`'s `format_apply_leave_footer_start_date`/`_end_date`). Omitted (no footer row at all) when a purpose doesn't pass one.
 - **Every navigation/cancel/view-switch action edits the existing message** (`HandlerContext.edit_message`, a small helper alongside `reply()`) — never sends a new one, so paging through months or years doesn't leave a trail of messages in the chat.
 
 ## 4. "Session" management — there isn't one

@@ -60,6 +60,24 @@ class BotAPIClient:
             payload["reply_markup"] = reply_markup
         return await self._call("editMessageText", payload)
 
+    async def edit_message_reply_markup(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        reply_markup: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """`editMessageReplyMarkup` — changes (or, with an empty keyboard,
+        removes) a message's inline keyboard without touching its text.
+        The counterpart to `edit_message_text` for callers that only need
+        to strip stale buttons off a message once they've been acted on
+        (see `handlers/context.py`'s `clear_reply_markup`), not change
+        what it says."""
+        payload: dict[str, Any] = {"chat_id": chat_id, "message_id": message_id}
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        return await self._call("editMessageReplyMarkup", payload)
+
     async def answer_callback_query(
         self, *, callback_query_id: str, text: str | None = None, show_alert: bool = False
     ) -> dict[str, Any]:

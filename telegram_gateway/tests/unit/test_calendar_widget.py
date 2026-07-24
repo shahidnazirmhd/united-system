@@ -27,9 +27,13 @@ from tests.fakes import (
 _TEST_PURPOSE = "test.widget.purpose"
 _TEST_PROMPT = "Pick a test date:"
 _DYNAMIC_PURPOSE = "test.widget.dynamic"
+_LABELED_PURPOSE = "test.widget.labeled"
+_TEST_LABEL = "🟢 pick a day"
+_DYNAMIC_LABELED_PURPOSE = "test.widget.dynamic_label"
 
 _results: list[tuple[HandlerContext, "date | None"]] = []
 _dynamic_prompt_text = "initial dynamic prompt"
+_dynamic_label_text = "initial dynamic label"
 
 
 @calendar_widget.on_date_selected(_TEST_PURPOSE, prompt=_TEST_PROMPT)
@@ -43,6 +47,20 @@ async def _dynamic_prompt(ctx: HandlerContext) -> str:
 
 @calendar_widget.on_date_selected(_DYNAMIC_PURPOSE, prompt=_dynamic_prompt)
 async def _record_dynamic_result(ctx: HandlerContext, value: "date | None") -> None:
+    _results.append((ctx, value))
+
+
+@calendar_widget.on_date_selected(_LABELED_PURPOSE, prompt=_TEST_PROMPT, label=_TEST_LABEL)
+async def _record_labeled_result(ctx: HandlerContext, value: "date | None") -> None:
+    _results.append((ctx, value))
+
+
+async def _dynamic_label(ctx: HandlerContext) -> str:
+    return _dynamic_label_text
+
+
+@calendar_widget.on_date_selected(_DYNAMIC_LABELED_PURPOSE, prompt=_TEST_PROMPT, label=_dynamic_label)
+async def _record_dynamic_labeled_result(ctx: HandlerContext, value: "date | None") -> None:
     _results.append((ctx, value))
 
 
@@ -383,6 +401,98 @@ async def test_callable_prompt_is_used_as_is_for_the_initial_render():
     await calendar_widget.start_calendar_flow(ctx, purpose=_DYNAMIC_PURPOSE, anchor=date(2026, 9, 1))
 
     assert ctx.bot.edited_messages[-1]["text"] == "initial render"
+
+
+# --- label (footer row shown below the grid, above Cancel) ---------------
+
+
+async def test_purpose_without_a_label_renders_no_footer_row():
+    _reset()
+    ctx = _ctx(FakeTelegramUpdate(callback_data="whatever", callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7))))
+
+    await calendar_widget.start_calendar_flow(ctx, purpose=_TEST_PURPOSE, anchor=date(2026, 9, 1))
+
+    labels = [b["text"] for row in ctx.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert _TEST_LABEL not in labels
+
+
+async def test_labeled_purpose_renders_footer_row_on_initial_render():
+    _reset()
+    ctx = _ctx(FakeTelegramUpdate(callback_data="whatever", callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7))))
+
+    await calendar_widget.start_calendar_flow(ctx, purpose=_LABELED_PURPOSE, anchor=date(2026, 9, 1))
+
+    labels = [b["text"] for row in ctx.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert _TEST_LABEL in labels
+
+
+async def test_label_persists_through_prev_next_navigation():
+    _reset()
+    ctx = _ctx(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{_LABELED_PURPOSE}:next:202609", callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7))
+        )
+    )
+
+    await calendar_widget.handle_calendar_callback(ctx)
+
+    labels = [b["text"] for row in ctx.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert _TEST_LABEL in labels
+
+
+async def test_label_persists_through_the_month_picker():
+    _reset()
+    ctx = _ctx(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{_LABELED_PURPOSE}:open_month:202609",
+            callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7)),
+        )
+    )
+
+    await calendar_widget.handle_calendar_callback(ctx)
+
+    labels = [b["text"] for row in ctx.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert _TEST_LABEL in labels
+
+
+async def test_label_persists_after_picking_a_month():
+    _reset()
+    ctx = _ctx(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{_LABELED_PURPOSE}:month:202612",
+            callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7)),
+        )
+    )
+
+    await calendar_widget.handle_calendar_callback(ctx)
+
+    labels = [b["text"] for row in ctx.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert _TEST_LABEL in labels
+
+
+async def test_dynamic_label_is_resolved_fresh_on_each_render():
+    global _dynamic_label_text
+    _reset()
+
+    _dynamic_label_text = "before"
+    ctx1 = _ctx(
+        FakeTelegramUpdate(callback_data="whatever", callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7)))
+    )
+    await calendar_widget.start_calendar_flow(ctx1, purpose=_DYNAMIC_LABELED_PURPOSE, anchor=date(2026, 9, 1))
+    labels1 = [b["text"] for row in ctx1.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert "before" in labels1
+
+    _dynamic_label_text = "after"
+    ctx2 = _ctx(
+        FakeTelegramUpdate(
+            callback_data=f"cal:{_DYNAMIC_LABELED_PURPOSE}:prev:202609",
+            callback_query=FakeCallbackQuery(message=FakeCallbackMessage(message_id=7)),
+        )
+    )
+    await calendar_widget.handle_calendar_callback(ctx2)
+    labels2 = [b["text"] for row in ctx2.bot.edited_messages[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert "after" in labels2
+    assert "before" not in labels2
 
 
 async def test_callable_prompt_reflects_updated_value_between_two_renders():

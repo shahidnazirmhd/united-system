@@ -89,6 +89,27 @@ class HandlerContext:
             chat_id=self.chat_id, message_id=callback_query.message.message_id, text=text, reply_markup=reply_markup
         )
 
+    async def clear_reply_markup(self) -> None:
+        """Strips the inline keyboard off the message this update's
+        callback query originated from, leaving its text untouched.
+
+        Telegram doesn't auto-disable a button once it's tapped — the
+        original message stays exactly as it was, buttons included, until
+        something explicitly edits it. Every callback handler whose next
+        step is a brand-new message (`reply()`) rather than an edit to
+        this same one (`edit_message()`) calls this first, so the button
+        that was just used can't be tapped again for a stale or duplicate
+        action (e.g. picking a second leave type from an already-actioned
+        list, or double-submitting Confirm) — the message itself is left
+        as a visible, inert record of what happened. Same "callback query
+        with a message attached" precondition as `edit_message()` —
+        asserts rather than silently no-op-ing."""
+        callback_query = self.update.callback_query
+        assert callback_query is not None and callback_query.message is not None
+        await self.bot.edit_message_reply_markup(
+            chat_id=self.chat_id, message_id=callback_query.message.message_id, reply_markup={"inline_keyboard": []}
+        )
+
     async def answer_callback(self, *, text: str | None = None, show_alert: bool = False) -> None:
         if self.update.callback_query is not None:
             await self.bot.answer_callback_query(

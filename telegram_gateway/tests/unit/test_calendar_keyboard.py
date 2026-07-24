@@ -131,6 +131,28 @@ def test_caption_button_opens_the_month_picker_for_the_currently_displayed_month
     assert parsed.month == 9
 
 
+def test_label_is_omitted_by_default():
+    keyboard = build_calendar_keyboard(_PURPOSE, 2026, 9)
+    labels = [b["text"] for row in keyboard["inline_keyboard"] for b in row]
+    assert "🟢 FROM DATE — tap a day to select" not in labels
+
+
+def test_label_row_sits_directly_above_the_cancel_row():
+    keyboard = build_calendar_keyboard(_PURPOSE, 2026, 9, label="🟢 FROM DATE — tap a day to select")
+    rows = keyboard["inline_keyboard"]
+    assert rows[-1][0]["text"] == "❌ Cancel"
+    assert len(rows[-2]) == 1
+    assert rows[-2][0]["text"] == "🟢 FROM DATE — tap a day to select"
+
+
+def test_label_row_button_is_a_pure_noop():
+    keyboard = build_calendar_keyboard(_PURPOSE, 2026, 9, label="🟢 FROM DATE — tap a day to select")
+    label_button = keyboard["inline_keyboard"][-2][0]
+    parsed = parse_calendar_callback(label_button["callback_data"])
+    assert parsed.action == ACTION_NOOP
+    assert parsed.year == 2026 and parsed.month == 9
+
+
 # --- build_month_picker_keyboard -------------------------------------
 
 
@@ -182,6 +204,21 @@ def test_month_picker_does_not_mark_any_month_in_a_different_year():
 def test_month_picker_purpose_containing_a_colon_is_rejected():
     with pytest.raises(AssertionError):
         build_month_picker_keyboard("bad:purpose", 2026)
+
+
+def test_month_picker_label_is_omitted_by_default():
+    keyboard = build_month_picker_keyboard(_PURPOSE, 2026)
+    labels = [b["text"] for row in keyboard["inline_keyboard"] for b in row]
+    assert "🔵 TO DATE — tap a day to select" not in labels
+
+
+def test_month_picker_label_row_sits_directly_above_the_cancel_row():
+    keyboard = build_month_picker_keyboard(_PURPOSE, 2026, label="🔵 TO DATE — tap a day to select")
+    rows = keyboard["inline_keyboard"]
+    assert rows[-1][0]["text"] == "❌ Cancel"
+    assert len(rows[-2]) == 1
+    assert rows[-2][0]["text"] == "🔵 TO DATE — tap a day to select"
+    assert parse_calendar_callback(rows[-2][0]["callback_data"]).action == ACTION_NOOP
 
 
 # --- parse_calendar_callback -----------------------------------------------
