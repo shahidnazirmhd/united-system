@@ -35,6 +35,16 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-placeholder-do-no
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
+# Every real deployment of this app sits behind a reverse proxy/load balancer
+# that terminates TLS itself and forwards plain HTTP to the container (Render,
+# Railway, Fly, nginx, ... — this is the norm, not a Render-specific quirk).
+# Without this, Django has no way to know the original request was HTTPS, so
+# staging.py/production.py's SECURE_SSL_REDIRECT=True would see every
+# proxied request as insecure and issue an HTTPS redirect... to itself,
+# forever. Harmless in local dev (runserver has no proxy in front of it, so
+# this header is simply never present) and in tests (same reason).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # --------------------------------------------------------------------------
 # Applications
 # --------------------------------------------------------------------------
