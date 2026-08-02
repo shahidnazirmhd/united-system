@@ -193,6 +193,38 @@ class FakeLeaveEndpoint:
         return self.cancel_result
 
 
+@dataclass
+class FakeApprovalsEndpoint:
+    """Configurable success/failure per method, same convention as
+    `FakeLeaveEndpoint` — Approval Engine (Phase 9)."""
+
+    pending: list = field(default_factory=list)
+    decide_result: object | None = None
+
+    raise_on_list_pending: Exception | None = None
+    raise_on_decide: Exception | None = None
+
+    decide_calls: list[dict] = field(default_factory=list)
+
+    async def list_pending(self, *, telegram_user_id: int):
+        if self.raise_on_list_pending is not None:
+            raise self.raise_on_list_pending
+        return self.pending
+
+    async def decide(self, *, telegram_user_id, approval_request_id, decision, comments):
+        self.decide_calls.append(
+            {
+                "telegram_user_id": telegram_user_id,
+                "approval_request_id": approval_request_id,
+                "decision": decision,
+                "comments": comments,
+            }
+        )
+        if self.raise_on_decide is not None:
+            raise self.raise_on_decide
+        return self.decide_result
+
+
 class FakeBotAPIClient:
     def __init__(self, *, raise_on_edit_message: Exception | None = None) -> None:
         self.sent_messages: list[dict] = []

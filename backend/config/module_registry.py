@@ -31,6 +31,34 @@ this dict needed to change either.
 `apps.employees`'s already-composed public `EmployeeService`, never that
 module's infrastructure directly), but neither `apps.identity` nor
 `apps.employees` needed a single line changed to support it.
+
+`apps.approvals` (Phase 9) is a generic, subject-agnostic Approval Engine —
+it depends on `apps.identity` (its own permission seed migration) and on
+`apps.employees` (through its own `EmployeeLookupPort` adapter, same
+pattern as `apps.leave`'s), but knows nothing about `apps.leave` or any
+other subject module at all. The dependency instead runs the other way for
+consumption: `apps.leave` depends directly on `apps.approvals` (calling
+`ApprovalService.create_approval_request` right after creating a
+`LeaveRequest`) and registers its own `ApprovalChainResolverPort`
+implementation into `apps.approvals.application.registry
+.chain_resolver_registry` at startup (`apps/leave/apps.py`'s `ready()`) —
+`apps.approvals` itself never imports `apps.leave`, so a second, third, or
+Nth subject module can adopt this engine later with zero changes to it.
+
+`apps.settings` (round 14) is a generic key-value application-settings
+store — no dependency on any other module at all. `apps.attendance`
+(round 14) starts with Holiday Management only; like `apps.employees`'
+`Department`, it has no dependency on anything either. Both are consumed
+by `apps.leave` through their own read-only ports
+(`SettingsLookupPort`/`HolidayLookupPort` in
+`apps.leave.application.ports`), the same "the consumer owns the port"
+rule `EmployeeLookupPort` already established — neither `apps.settings`
+nor `apps.attendance` needed a single line changed to support it. Note
+the app label for Settings is `app_settings`, not `settings` — see
+`apps/settings/apps.py`, chosen to avoid any ambiguity with Django's own
+`django.conf.settings` in log output, migration names, and `apps.get_model`
+calls; the URL prefix and Python package path are unaffected and remain
+`apps.settings`/`/api/v1/settings/`.
 """
 from __future__ import annotations
 
@@ -39,12 +67,13 @@ ACTIVE_MODULES: list[str] = [
     "apps.identity",
     "apps.employees",
     "apps.leave",
+    "apps.approvals",
+    "apps.settings",
+    "apps.attendance",
     # Future HR modules are added here, one line each, e.g.:
-    # "apps.attendance",
     # "apps.payroll",
     # "apps.performance",
     # "apps.recruitment",
-    # "apps.approvals",
     # "apps.notifications",
 ]
 
@@ -52,4 +81,7 @@ API_MODULE_URL_PREFIXES: dict[str, str] = {
     "auth": "apps.identity",
     "employees": "apps.employees",
     "leave": "apps.leave",
+    "approvals": "apps.approvals",
+    "settings": "apps.settings",
+    "attendance": "apps.attendance",
 }

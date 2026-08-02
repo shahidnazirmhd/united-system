@@ -7,14 +7,24 @@ collapse to the same underlying mechanism here — a plain list omits
 query code paths for what is, underneath, one repository call with an
 optional extra filter. See shared_kernel/domain/repository.py:QueryParams.
 
-`department_name`/`manager_name` are resolved only for single-record reads
-(`get_by_id`, `get_my_profile`), not `list`/`search` — resolving them for
-every row of a list would mean up to two extra queries per row (no
-select_related/prefetch path exists in the generic
-`DjangoBaseRepository.list()`), which is a real N+1 cost for a feature
-(a Telegram profile card) that only ever needs a single record at a time.
-List/search responses leave these fields `None`; the Telegram formatter (or
-any other consumer) treats that the same as any other "unavailable" field.
+`manager_name` is resolved only for single-record reads (`get_by_id`,
+`get_my_profile`), not `list`/`search` — resolving it for every row of a
+list would mean an extra query per row (no select_related/prefetch path
+exists in the generic `DjangoBaseRepository.list()`, and `manager_id` is a
+self-referential FK with no cheap batch lookup already on hand), which is a
+real N+1 cost for a feature (a Telegram profile card, or the Employee
+Detail page) that only ever needs a single record at a time. List/search
+responses leave `manager_name` `None`; the Telegram formatter (or any other
+consumer) treats that the same as any other "unavailable" field.
+
+`department_name` **is** resolved for `list`/`search` too (bugfix — the
+Employee List table's Department column was always showing "—" even for
+employees with a department, because this field used to follow the same
+single-record-only rule as `manager_name` above). Unlike `manager_id`,
+`department_id` has a cheap batch lookup available
+(`DepartmentRepository.get_by_ids`), so `list()` below does exactly one
+extra query per page — for every *distinct* department on that page, not
+one query per employee row — instead of skipping the resolution outright.
 """
 from __future__ import annotations
 
@@ -22,6 +32,7 @@ import uuid
 
 from apps.employees.application.dtos import EmployeeListQuery, EmployeeResponse
 from apps.employees.application.mappers import employee_to_response
+from apps.employees.application.ports import UserLookupPort
 from apps.employees.domain.entities import Employee
 from apps.employees.domain.exceptions import EmployeeNotFoundError, EmployeeNotLinkedToTelegramError
 from apps.employees.domain.repositories import DepartmentRepository, EmployeeRepository
@@ -32,9 +43,18 @@ _DEFAULT_ORDERING = ("employee_code",)
 
 
 class EmployeeQueryService:
-    def __init__(self, employee_repository: EmployeeRepository, department_repository: DepartmentRepository) -> None:
+    def __init__(
+        self,
+        employee_repository: EmployeeRepository,
+        department_repository: DepartmentRepository,
+        user_lookup: UserLookupPort | None = None,
+    ) -> None:
         self._employees = employee_repository
         self._departments = department_repository
+        # Optional (default None), same backward-compatibility reasoning as
+        # EmployeeCommandService's own user_lookup param — only the
+        # linked_user_email enrichment (Phase 12 bugfix) needs this.
+        self._user_lookup = user_lookup
 
     def get_by_id(self, employee_id: uuid.UUID) -> EmployeeResponse:
         employee = self._employees.get_by_id(employee_id)
@@ -81,7 +101,30 @@ class EmployeeQueryService:
             if manager is not None:
                 manager_name = manager.profile.full_name
 
-        return employee_to_response(employee, department_name=department_name, manager_name=manager_name)
+        linked_user_email = None
+        if employee.user_id is not None and self._user_lookup is not None:
+            linked_user_email = self._user_lookup.get_user_email(employee.user_id)
+
+        return employee_to_response(
+            employee,
+            department_name=department_name,
+            manager_name=manager_name,
+            linked_user_email=linked_user_email,
+        )
+
+    def list_employee_ids_by_current_status(self, statuses: list[str]) -> list[uuid.UUID]:
+        """Round 14 items 6/8 — batch lookup for
+        `apps.leave`'s daily status-reconciliation task (via
+        `EmployeeLookupPort.list_employee_ids_on_leave_status`): every
+        employee currently in one of `statuses`
+        (`current_status__in=...`). Not paginated — this is an internal
+        batch read for another module's background job, not a user-facing
+        list, so `page_size` is set high enough to cover any realistic
+        headcount in one query rather than looping pages."""
+        page_result = self._employees.list(
+            QueryParams(filters={"current_status__in": statuses}, page_size=100_000)
+        )
+        return [e.id for e in page_result.items]
 
     def list(self, query: EmployeeListQuery) -> PageResult[EmployeeResponse]:
         filters: dict[str, object] = {}
@@ -102,8 +145,20 @@ class EmployeeQueryService:
                 page_size=query.page_size,
             )
         )
+
+        # One batch query for every distinct department on this page — see
+        # this module's docstring on why department_name (unlike
+        # manager_name) is resolved for list/search, not left None.
+        department_ids = frozenset(e.employment_info.department_id for e in page_result.items)
+        department_names = {d.id: d.name for d in self._departments.get_by_ids(department_ids)}
+
         return PageResult(
-            items=[employee_to_response(e) for e in page_result.items],
+            items=[
+                employee_to_response(
+                    e, department_name=department_names.get(e.employment_info.department_id)
+                )
+                for e in page_result.items
+            ],
             total_count=page_result.total_count,
             page=page_result.page,
             page_size=page_result.page_size,

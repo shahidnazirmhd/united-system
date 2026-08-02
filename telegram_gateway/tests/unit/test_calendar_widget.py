@@ -10,11 +10,13 @@ from __future__ import annotations
 from datetime import date
 
 from src.auth.account_linking import AccountLinkingService
+from src.auth.approval_decision import ApprovalDecisionService
 from src.auth.leave_application import LeaveApplicationService
 from src.handlers import calendar_widget
 from src.handlers.context import HandlerContext
 from src.formatting.calendar_keyboard import MAX_YEAR, MIN_YEAR
 from tests.fakes import (
+    FakeApprovalsEndpoint,
     FakeBotAPIClient,
     FakeCallbackMessage,
     FakeCallbackQuery,
@@ -67,6 +69,7 @@ async def _record_dynamic_labeled_result(ctx: HandlerContext, value: "date | Non
 def _ctx(update) -> HandlerContext:
     employees = FakeEmployeesEndpoint()
     leave = FakeLeaveEndpoint()
+    approvals = FakeApprovalsEndpoint()
     return HandlerContext(
         update=update,
         bot=FakeBotAPIClient(),
@@ -74,6 +77,8 @@ def _ctx(update) -> HandlerContext:
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, FakeRedis()),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
 
 

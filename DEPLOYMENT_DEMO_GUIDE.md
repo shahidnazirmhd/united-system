@@ -13,7 +13,7 @@ The full local stack (`infra/docker-compose.yml`) is: Postgres, two Redis instan
 One real constraint this plan works around: **Render's free tier has no shell/SSH access and no pre-deploy command** (both paid-only). So there's no way to `exec` into the container and run `manage.py migrate` by hand. To handle this I added two small, deploy-only files (nothing about your local dev setup changes):
 
 - `infra/docker/backend.render.Dockerfile` — same production image as `backend.Dockerfile`, but its start command runs `migrate` and a new `seed_demo_data` management command before starting gunicorn, every time the container boots (both are idempotent, so this is safe to repeat on every restart).
-- `backend/apps/identity/management/commands/seed_demo_data.py` — idempotently creates one Department and one HR Admin user from environment variables, so you get a working login without ever needing a shell.
+- `backend/apps/identity/management/commands/seed_demo_data.py` — idempotently creates one Department and one Admin user from environment variables, so you get a working login without ever needing a shell.
 
 Also fixed one real (pre-existing, not demo-specific) settings bug while at it: `backend/config/settings/base.py` now sets `SECURE_PROXY_SSL_HEADER`, which any deployment behind a reverse proxy (Render, Railway, Fly, nginx — not just this one) needs, or `SECURE_SSL_REDIRECT=True` in `production.py`/`staging.py` causes an infinite redirect loop.
 
@@ -40,10 +40,10 @@ python3 -c "import secrets; print('TELEGRAM_GATEWAY_WEBHOOK_SECRET_TOKEN=' + sec
 ## Phase 3 — Two free Redis databases (Upstash)
 
 1. Go to upstash.com → sign up free (GitHub/Google/email, no card).
-2. **Create Database** → name it `hrms-backend-redis` → any nearby region → Redis. Once created, open it and find the connection string for a plain Redis client (redis-py/ioredis) — it looks like `rediss://default:<password>@<host>:<port>`. Copy it.
-3. **Create Database** again → name it `hrms-gateway-redis` → same steps → copy its `rediss://` URL too.
+2. **Create Database** → name it `hrms-backend-redis` → any nearby region → Redis. Once created, open its connection details — Upstash shows an example like `redis-cli --tls -u redis://default:<password>@<host>:6379`, i.e. scheme `redis://` plus a *separate* `--tls` flag, because that's how `redis-cli` specifically takes it. **Our code doesn't have a separate TLS flag — it only looks at the URL scheme.** So take that string and manually change `redis://` to `rediss://` (double s) before using it anywhere below: `rediss://default:<password>@<host>:6379`. Getting this wrong is the single most common mistake in this whole guide — Upstash's free databases only accept TLS connections, so a plain `redis://` URL connects, gets its first bytes rejected, and dies immediately (you'll see `redis.exceptions.ConnectionError: Connection closed by server` in the logs if this happens).
+3. **Create Database** again → name it `hrms-gateway-redis` → same steps → same `redis://` → `rediss://` fix → copy that URL too.
 
-You now have two URLs. Keep them labeled — they go to different services.
+You now have two `rediss://` URLs. Keep them labeled — they go to different services.
 
 ## Phase 4 — Render: account + free Postgres
 
@@ -85,7 +85,7 @@ You now have two URLs. Keep them labeled — they go to different services.
 5. Watch the **Logs** tab during this redeploy. You should see the `migrate` output, then something like:
    ```
    Seeded department 'Demo' (DEMO), id=<uuid>
-   Seeded HR Admin '<your email>' (id=<uuid>).
+   Seeded Admin '<your email>' (id=<uuid>).
    ```
    **Copy that department `id` (UUID) — you'll need it in Phase 8.**
 6. Sanity check: `curl https://hrms-backend-xxxx.onrender.com/health/` should return a 200.
@@ -132,7 +132,7 @@ curl "https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo"
 
 ## Phase 8 — Create a demo Employee and link Telegram
 
-1. Log in as the seeded HR Admin:
+1. Log in as the seeded Admin:
    ```bash
    curl -X POST https://hrms-backend-xxxx.onrender.com/api/v1/auth/login/ \
      -H "Content-Type: application/json" \

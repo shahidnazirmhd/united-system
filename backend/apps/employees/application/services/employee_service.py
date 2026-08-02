@@ -16,6 +16,8 @@ from apps.employees.application.dtos import (
     CreateEmployeeRequest,
     EmployeeListQuery,
     EmployeeResponse,
+    LinkUserToEmployeeRequest,
+    UpdateEmployeeCurrentStatusRequest,
     UpdateEmployeeRequest,
 )
 from apps.employees.application.services.employee_command_service import EmployeeCommandService
@@ -37,6 +39,9 @@ class EmployeeService:
 
     def get_profile_by_telegram_user_id(self, telegram_user_id: int) -> EmployeeResponse:
         return self._queries.get_profile_by_telegram_user_id(telegram_user_id)
+
+    def list_employee_ids_by_current_status(self, statuses: list[str]) -> list[uuid.UUID]:
+        return self._queries.list_employee_ids_by_current_status(statuses)
 
     def list(self, query: EmployeeListQuery | QueryParams) -> PageResult[EmployeeResponse]:
         # BaseViewSet.list() (shared_kernel/api/base_viewset.py) builds a
@@ -75,5 +80,17 @@ class EmployeeService:
     def activate_employee(self, employee_id: uuid.UUID) -> EmployeeResponse:
         return self._commands.activate_employee(employee_id)
 
+    def link_user(self, request: LinkUserToEmployeeRequest) -> EmployeeResponse:
+        return self._commands.link_user(request)
+
     def deactivate_employee(self, employee_id: uuid.UUID) -> EmployeeResponse:
         return self._commands.deactivate_employee(employee_id)
+
+    def update_current_status(self, request: UpdateEmployeeCurrentStatusRequest) -> EmployeeResponse:
+        return self._commands.update_current_status(request)
+
+    def enter_leave_status(self, employee_id: uuid.UUID, leave_status: str) -> EmployeeResponse:
+        return self._commands.enter_leave_status(employee_id, leave_status)
+
+    def exit_leave_status(self, employee_id: uuid.UUID) -> EmployeeResponse:
+        return self._commands.exit_leave_status(employee_id)

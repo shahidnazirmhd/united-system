@@ -16,7 +16,12 @@ phase's delivery notes on why no schema change was made for this.
 from __future__ import annotations
 
 from src.api_client.endpoints.employees import EmployeeProfile
-from src.formatting.common import escape_markdown, field_or_placeholder, format_status_label
+from src.formatting.common import (
+    escape_markdown,
+    field_or_placeholder,
+    format_current_status_label,
+    format_status_label,
+)
 
 # HRMS_Database_Design.md's employees.employees table has no company/branch
 # columns (single-tenant, single-site schema as approved) — these two
@@ -40,6 +45,10 @@ def format_my_profile(profile: EmployeeProfile) -> str:
         f"📅 Joined: {field_or_placeholder(profile.date_of_joining)}",
         f"📄 Employment Type: {field_or_placeholder(profile.employment_type.replace('_', ' ').title())}",
         f"Status: {format_status_label(profile.status)}",
+        # Round 15 items 7/8 — the day-to-day working status, distinct
+        # from the system-access "Status" line above (see
+        # formatting/common.py's `format_current_status_label` docstring).
+        f"🧭 Working Status: {format_current_status_label(profile.current_status)}",
     ]
     return "\n".join(lines)
 
@@ -47,5 +56,6 @@ def format_my_profile(profile: EmployeeProfile) -> str:
 def format_employee_status(profile: EmployeeProfile) -> str:
     return (
         f"*{escape_markdown(profile.full_name)}* ({profile.employee_code})\n"
-        f"Current status: {format_status_label(profile.status)}"
+        f"Status: {format_status_label(profile.status)}\n"
+        f"Working Status: {format_current_status_label(profile.current_status)}"
     )

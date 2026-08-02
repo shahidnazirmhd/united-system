@@ -81,6 +81,26 @@ class RoleAlreadyAssignedError(ConflictError):
     code = "role_already_assigned"
 
 
+class CannotDeleteSystemRoleError(ConflictError):
+    """Built-in system roles (currently only "Admin") cannot be deleted —
+    see migration 0006_rename_admin_role_and_prune_system_roles.py for why
+    it's the only role left with `is_system_role=True`. Deleting it would
+    risk locking every admin out of Role Management itself."""
+
+    code = "cannot_delete_system_role"
+
+
+class RoleInUseError(ConflictError):
+    """This role is still assigned to at least one user — revoke it from
+    every user first. A deliberate guard (Role & Permission Management
+    phase): deleting a role out from under assigned users would silently
+    change their effective permissions as a side effect of an unrelated
+    cleanup action, which is the wrong failure mode for an authorization
+    system."""
+
+    code = "role_in_use"
+
+
 class InvalidResetTokenError(ValidationError):
     """This password reset token is invalid or has already been used."""
 

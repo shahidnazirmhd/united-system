@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "United HRMS - Identity + Employees",
-    "description": "Authentication/RBAC (Identity, Phase 5), Employee CRUD (Employee module, Phase 6), and Leave Management (Phase 8) endpoints. Run requests top-to-bottom within each folder. Folder 6 (Employee Management) requires the access_token captured by folder 2's 'Login (Admin)' request, and a department_id \u2014 see that folder's first request for how to get one. Folder 7 (Leave Management) additionally requires folder 4 (User Management) to have run first \u2014 see folder 7's first few requests for why.",
+    "description": "Authentication/RBAC (Identity, Phase 5), Employee CRUD (Employee module, Phase 6), Leave Management (Phase 8), and the generic Approval Engine (Phase 9) endpoints. Run requests top-to-bottom within each folder. Folder 6 (Employee Management) requires the access_token captured by folder 2's 'Login (Admin)' request, and a department_id \u2014 see that folder's first request for how to fetch one. Folder 7 (Leave Management) also sets up and Telegram-links a manager for folder 8 (Approvals) to decide requests as. Folder 8 additionally requires the 'internal_service_key' collection variable to match your .env's INTERNAL_SERVICE_API_KEY, and a manual OTP-fetch step from the backend logs (see folder 7's 'Link Manager Telegram - Request OTP' request).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -61,6 +61,11 @@
       "type": "string"
     },
     {
+      "key": "admin_role_id",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "reset_token",
       "value": "PASTE_FROM_CONTAINER_LOGS",
       "type": "string"
@@ -68,6 +73,11 @@
     {
       "key": "department_id",
       "value": "PASTE_FROM_SHELL_COMMAND_BELOW",
+      "type": "string"
+    },
+    {
+      "key": "new_department_id",
+      "value": "",
       "type": "string"
     },
     {
@@ -92,6 +102,71 @@
     },
     {
       "key": "leave_request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "internal_service_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "manager_employee_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "manager_employee_code",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "manager_telegram_user_id",
+      "value": "900000001",
+      "type": "string"
+    },
+    {
+      "key": "manager_otp",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "approval_leave_request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "approval_request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reject_leave_request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reject_approval_request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "new_leave_type_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hr_leave_request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hr_approver_employee_id",
       "value": "",
       "type": "string"
     }
@@ -267,10 +342,11 @@
                   "pm.test(\"Email matches admin\", function () {",
                   "    pm.expect(pm.response.json().data.email).to.eql(pm.collectionVariables.get(\"admin_email\"));",
                   "});",
-                  "pm.test(\"Has HR Admin role\", function () {",
+                  "pm.test(\"Has Admin role\", function () {",
                   "    var roles = pm.response.json().data.roles.map(function(r) { return r.name; });",
-                  "    pm.expect(roles).to.include(\"HR Admin\");",
-                  "});"
+                  "    pm.expect(roles).to.include(\"Admin\");",
+                  "});",
+                  "pm.collectionVariables.set(\"admin_user_id\", pm.response.json().data.id);"
                 ]
               }
             }
@@ -746,7 +822,7 @@
             "description": "Requires identity.manage_users \u2014 run 'Login (Admin)' first so access_token is an admin token.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{new_user_email}}\",\n  \"password\": \"{{new_user_password}}\",\n  \"is_system_account\": false\n}",
+              "raw": "{\n  \"email\": \"{{new_user_email}}\",\n  \"password\": \"{{new_user_password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -884,6 +960,337 @@
               }
             }
           ]
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ]
+            },
+            "description": "Requires identity.view_users (Phase 12). Run 'Login (Admin)' first.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"data is an array\", function () { pm.expect(json.data).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{new_user_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{new_user_id}}"
+              ]
+            },
+            "description": "Requires identity.view_users (Phase 12). Must run after 'Create User (as Admin)' so new_user_id is set.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"id matches new_user_id\", function () { pm.expect(json.data.id).to.eql(pm.collectionVariables.get(\"new_user_id\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get User - Not Found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/00000000-0000-0000-0000-000000000000/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404 user_not_found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"user_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{new_user_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{new_user_id}}"
+              ]
+            },
+            "description": "Requires identity.manage_users (Phase 12). Full-replace update of email only.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{new_user_email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{new_user_id}}/deactivate/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{new_user_id}}",
+                "deactivate"
+              ]
+            },
+            "description": "Requires identity.manage_users (Phase 12). No request body.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"is_active is false\", function () { pm.expect(pm.response.json().data.is_active).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as Deactivated User - Inactive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Proves deactivation takes effect immediately \u2014 must run right after 'Deactivate User'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{new_user_email}}\",\n  \"password\": \"{{new_user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401 inactive_user\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"inactive_user\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activate User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{new_user_id}}/activate/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{new_user_id}}",
+                "activate"
+              ]
+            },
+            "description": "Requires identity.manage_users (Phase 12). Restores the account deactivated above so later folders (e.g. Leave/Approvals) can still use it if needed.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"is_active is true\", function () { pm.expect(pm.response.json().data.is_active).to.eql(true); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -927,11 +1334,15 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"5 seeded system roles present\", function () {",
-                  "    var names = pm.response.json().data.map(function(r) { return r.name; });",
-                  "    [\"Employee\",\"Manager\",\"HR Admin\",\"Payroll Admin\",\"Recruiter\"].forEach(function(n) {",
-                  "        pm.expect(names).to.include(n);",
-                  "    });",
+                  "pm.test(\"Seeded Admin role present\", function () {",
+                  "    var roles = pm.response.json().data;",
+                  "    var names = roles.map(function(r) { return r.name; });",
+                  "    pm.expect(names).to.include(\"Admin\");",
+                  "});",
+                  "pm.test(\"Admin role is marked is_system_role\", function () {",
+                  "    var admin = pm.response.json().data.find(function(r) { return r.name === \"Admin\"; });",
+                  "    pm.expect(admin.is_system_role).to.eql(true);",
+                  "    pm.collectionVariables.set(\"admin_role_id\", admin.id);",
                   "});"
                 ]
               }
@@ -1114,6 +1525,158 @@
           ]
         },
         {
+          "name": "Get Role by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/roles/{{new_role_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "roles",
+                "{{new_role_id}}"
+              ]
+            },
+            "description": "Fetches the Auditor role created above.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Name matches\", function () {",
+                  "    pm.expect(pm.response.json().data.name).to.eql(\"Auditor\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/roles/{{new_role_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "roles",
+                "{{new_role_id}}"
+              ]
+            },
+            "description": "Full-replace update \u2014 permission_codes must list every permission the role should end up holding, not just what changed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Auditor\",\n  \"description\": \"Read-only compliance access, now including role visibility.\",\n  \"permission_codes\": [\n    \"identity.view_users\",\n    \"identity.view_roles\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Permission codes updated\", function () {",
+                  "    pm.expect(pm.response.json().data.permission_codes).to.include(\"identity.view_roles\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Permissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/permissions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "permissions"
+              ]
+            },
+            "description": "Feeds the Role Management UI's permission picker \u2014 every module's own seed migration contributes rows here.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"identity.manage_roles is registered\", function () {",
+                  "    var codes = pm.response.json().data.map(function(p) { return p.code; });",
+                  "    pm.expect(codes).to.include(\"identity.manage_roles\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Assign Role to User",
           "request": {
             "method": "POST",
@@ -1232,6 +1795,52 @@
           ]
         },
         {
+          "name": "Delete Role - In Use (should fail)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/roles/{{new_role_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "roles",
+                "{{new_role_id}}"
+              ]
+            },
+            "description": "Auditor is still assigned to new_user_id at this point in the folder (assigned above, revoked in the next request) \u2014 deleting it now must be rejected.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 role_in_use\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"role_in_use\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Revoke Role from User",
           "request": {
             "method": "DELETE",
@@ -1252,6 +1861,138 @@
               ]
             },
             "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Role - System Role (should fail)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/roles/{{admin_role_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "roles",
+                "{{admin_role_id}}"
+              ]
+            },
+            "description": "The built-in Admin role (is_system_role=true) can never be deleted.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 cannot_delete_system_role\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"cannot_delete_system_role\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Role - As Non-Admin (should fail)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/roles/{{new_role_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "roles",
+                "{{new_role_id}}"
+              ]
+            },
+            "description": "Uses new_user_access_token (no identity.manage_roles) \u2014 proves RBAC is enforced on delete too.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403 insufficient_permission\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Role (Success)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/roles/{{new_role_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "roles",
+                "{{new_role_id}}"
+              ]
+            },
+            "description": "Auditor was revoked from new_user_id above, so it's no longer in use \u2014 deletion now succeeds.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1302,7 +2043,7 @@
                 "employees"
               ]
             },
-            "description": "Requires employees.manage_employees (HR Admin has it by default) \u2014 run 'Login (Admin)' in folder 2 first. Requires 'department_id' collection variable to be set first: docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c \"from apps.employees.infrastructure.models import DepartmentRecord; [print(d.code, d.id) for d in DepartmentRecord.objects.all()]\" \u2014 departments GEN/ENG/HR are seeded automatically by migration 0003. Captures employee_id for every other request in this folder.",
+            "description": "Requires employees.manage_employees (Admin has it by default) \u2014 run 'Login (Admin)' in folder 2 first. Requires 'department_id' collection variable to be set first: docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c \"from apps.employees.infrastructure.models import DepartmentRecord; [print(d.code, d.id) for d in DepartmentRecord.objects.all()]\" \u2014 departments GEN/ENG/HR are seeded automatically by migration 0003. Captures employee_id for every other request in this folder.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Lovelace\",\n  \"work_email\": \"ada.lovelace@example.com\",\n  \"department_id\": \"{{department_id}}\",\n  \"job_title\": \"Software Engineer\",\n  \"employment_type\": \"full_time\",\n  \"date_of_joining\": \"2024-01-15\"\n}",
@@ -1520,7 +2261,7 @@
                 "{{employee_id}}"
               ]
             },
-            "description": "Requires employees.view_employees (HR Admin has it by default). Run 'Create Employee' first.",
+            "description": "Requires employees.view_employees (Admin has it by default). Run 'Create Employee' first.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1879,6 +2620,444 @@
               }
             }
           ]
+        },
+        {
+          "name": "Link User to Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/{{employee_id}}/link-user/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "{{employee_id}}",
+                "link-user"
+              ]
+            },
+            "description": "Requires employees.manage_employees (Phase 12, User Management). Must run after 'Create Employee' (folder 6) and 'Create User (as Admin)' (folder 4) so both employee_id and new_user_id are set.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{new_user_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"user_id is linked\", function () { pm.expect(pm.response.json().data.user_id).to.eql(pm.collectionVariables.get(\"new_user_id\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Department",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments"
+              ]
+            },
+            "description": "Requires employees.manage_employees (Phase 12, Department CRUD). head_employee_id reuses the employee created above. Captures new_department_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Quality Assurance\",\n  \"code\": \"QA\",\n  \"parent_department_id\": null,\n  \"head_employee_id\": \"{{employee_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set(\"new_department_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Department - Duplicate Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments"
+              ]
+            },
+            "description": "Must run AFTER 'Create Department' \u2014 GEN is one of the departments seeded by migration 0003_seed_departments, proving the uniqueness check.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"General Duplicate\",\n  \"code\": \"GEN\",\n  \"parent_department_id\": null,\n  \"head_employee_id\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 duplicate_department_code\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"duplicate_department_code\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Department - Self Parent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments"
+              ]
+            },
+            "description": "A department cannot be its own parent \u2014 only reachable on create by (implausibly) guessing an id, so this uses a random uuid standing in for 'some other department's id' to prove the check exists; see 'Update Department - Self Parent' below for the realistic case.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Self Parent Test\",\n  \"code\": \"SPT\",\n  \"parent_department_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"head_employee_id\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404 department_not_found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"department_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Departments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments"
+              ]
+            },
+            "description": "Requires employees.view_employees. parent_department_name/head_employee_name are null on list rows by design \u2014 see EMPLOYEE_API.md.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"data is an array\", function () { pm.expect(pm.response.json().data).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Department by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/{{new_department_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments",
+                "{{new_department_id}}"
+              ]
+            },
+            "description": "Requires employees.view_employees. head_employee_name should be resolved (non-null) since Create Department set head_employee_id.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"head_employee_name is resolved\", function () { pm.expect(pm.response.json().data.head_employee_name).to.not.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Department",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/{{new_department_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments",
+                "{{new_department_id}}"
+              ]
+            },
+            "description": "Requires employees.manage_employees. Full-replace update, including is_active (this is how a department is reactivated).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Quality Assurance\",\n  \"code\": \"QA\",\n  \"parent_department_id\": null,\n  \"head_employee_id\": \"{{employee_id}}\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Department - Self Parent",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/departments/{{new_department_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "departments",
+                "{{new_department_id}}"
+              ]
+            },
+            "description": "Sets parent_department_id to the department's own id \u2014 the realistic self-parent case, only possible on update since the id doesn't exist yet at create time.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Quality Assurance\",\n  \"code\": \"QA\",\n  \"parent_department_id\": \"{{new_department_id}}\",\n  \"head_employee_id\": null,\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 invalid_department_parent\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"invalid_department_parent\");",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -2090,6 +3269,411 @@
           ]
         },
         {
+          "name": "Apply Leave - No Manager Assigned (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "Phase 9: Grace has no manager assigned yet at this point in the run (the Approval Engine's own precondition, checked before any leave/approval row is written) \u2014 expects the exact friendly message apps/leave/domain/exceptions.py's NoManagerAssignedError carries. Run this BEFORE 'Create Manager Employee' below.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-09-01\",\n  \"end_date\": \"2026-09-03\",\n  \"reason\": \"Family trip\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 no_manager_assigned\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"no_manager_assigned\");",
+                  "});",
+                  "pm.test(\"Friendly message matches spec exactly\", function () {",
+                  "    pm.expect(pm.response.json().error.message).to.eql(\"No manager is assigned to your account. Please contact HR.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Manager Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees"
+              ]
+            },
+            "description": "Creates Margaret Hamilton as Grace's manager \u2014 no user_id (managers don't need an HR System login for this flow; they act entirely through Telegram, see below). Captures manager_employee_id and manager_employee_code.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Margaret\",\n  \"last_name\": \"Hamilton\",\n  \"work_email\": \"margaret.hamilton@example.com\",\n  \"department_id\": \"{{department_id}}\",\n  \"job_title\": \"Engineering Manager\",\n  \"employment_type\": \"full_time\",\n  \"date_of_joining\": \"2020-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set(\"manager_employee_id\", json.data.id);",
+                  "pm.collectionVariables.set(\"manager_employee_code\", json.data.employee_code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign Manager To Linked Employee",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/{{linked_employee_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "{{linked_employee_id}}"
+              ]
+            },
+            "description": "Full-replace update (every field required, see EMPLOYEE_API.md) \u2014 re-sends Grace's existing fields plus the new manager_id from 'Create Manager Employee' above.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Grace\",\n  \"last_name\": \"Hopper\",\n  \"work_email\": \"grace.hopper@example.com\",\n  \"department_id\": \"{{department_id}}\",\n  \"job_title\": \"Systems Engineer\",\n  \"employment_type\": \"full_time\",\n  \"date_of_joining\": \"2024-02-01\",\n  \"manager_id\": \"{{manager_employee_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"manager_id set\", function () {",
+                  "    pm.expect(pm.response.json().data.manager_id).to.eql(pm.collectionVariables.get(\"manager_employee_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create HR Approver Employee (Linked To Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees"
+              ]
+            },
+            "description": "Leave review round: links the bootstrap Admin's own User account (admin_user_id, captured from 'Get Current User (Me)' in folder 2) to a brand-new Employee record, purely so folder 8's level-2 HR/Admin decide step has a real employee to act as -- the Approval Engine always resolves the acting party to an Employee, and the Admin login created in Part D1 isn't linked to one by default (see D3's note). Approval Workflow Changes v2: Admin's role already holds approvals.level2_approve by default (seeded by apps/approvals/migrations/0006_seed_level_approval_permissions.py -- see APPROVALS_API.md's 'New permissions' section), so this employee can decide any permission-based level-2 step without any further setup. (It also still holds leave.manage_leave, carried over from the original 'HR Admin' role -- that permission now only gates Leave's own management screens, not deciding this step.)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Admin\",\n  \"work_email\": \"hr.approver@example.com\",\n  \"department_id\": \"{{department_id}}\",\n  \"user_id\": \"{{admin_user_id}}\",\n  \"job_title\": \"HR Administrator\",\n  \"employment_type\": \"full_time\",\n  \"date_of_joining\": \"2020-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set(\"hr_approver_employee_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave - Manager Not Linked To Telegram (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "Margaret is now Grace's manager but hasn't linked Telegram yet \u2014 expects the exact friendly message ManagerNotLinkedToTelegramError carries. Run this BEFORE the Telegram-linking requests below.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-09-01\",\n  \"end_date\": \"2026-09-03\",\n  \"reason\": \"Family trip\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422 manager_not_linked_to_telegram\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"manager_not_linked_to_telegram\");",
+                  "});",
+                  "pm.test(\"Friendly message matches spec exactly\", function () {",
+                  "    pm.expect(pm.response.json().error.message).to.eql(\"Your manager has not linked their Telegram account yet. Please contact HR.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Link Manager Telegram - Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/telegram/link/request/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "telegram",
+                "link",
+                "request"
+              ]
+            },
+            "description": "Gateway-facing endpoint (HasInternalServiceKey) \u2014 set the 'internal_service_key' collection variable to match your .env's INTERNAL_SERVICE_API_KEY first. MANUAL STEP after running this: the OTP is emailed to margaret.hamilton@example.com \u2014 fetch it from the backend logs exactly as TESTING_GUIDE.md Part H describes (docker compose ... logs backend --tail=50, or SMTP inbox if configured) and paste it into the 'manager_otp' collection variable before running 'Link Manager Telegram - Verify OTP' below.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_code\": \"{{manager_employee_code}}\",\n  \"telegram_user_id\": {{manager_telegram_user_id}},\n  \"chat_id\": {{manager_telegram_user_id}},\n  \"telegram_username\": \"postman_test_manager\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Link Manager Telegram - Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/employees/telegram/link/verify/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "employees",
+                "telegram",
+                "link",
+                "verify"
+              ]
+            },
+            "description": "Paste the OTP fetched from the backend logs into the 'manager_otp' collection variable before running this (see the previous request's description).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telegram_user_id\": {{manager_telegram_user_id}},\n  \"chat_id\": {{manager_telegram_user_id}},\n  \"otp\": \"{{manager_otp}}\",\n  \"telegram_username\": \"postman_test_manager\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Manager now linked to Telegram\", function () {",
+                  "    pm.expect(pm.response.json().data.is_linked_to_telegram).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Apply Leave",
           "request": {
             "method": "POST",
@@ -2111,7 +3695,7 @@
                 "requests"
               ]
             },
-            "description": "Always applies on the caller's own behalf, always creates status=pending (no approval workflow yet \u2014 Phase 8). Captures leave_request_id for the rest of this folder.",
+            "description": "Always applies on the caller's own behalf, always creates status=pending. As of Phase 9, this also opens an approval request behind the scenes for Grace's manager (Margaret, now assigned and Telegram-linked by the requests above) \u2014 see folder '8. Approvals' and APPROVALS_API.md.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-09-01\",\n  \"end_date\": \"2026-09-03\",\n  \"reason\": \"Family trip\"\n}",
@@ -2541,7 +4125,7 @@
                 "{{linked_employee_id}}"
               ]
             },
-            "description": "Requires leave.view_leave (HR Admin has it by default) \u2014 the HR/manager-oversight counterpart to 'My Leave Balance', for viewing someone else's balance.",
+            "description": "Requires leave.view_leave (Admin has it by default) \u2014 the HR/manager-oversight counterpart to 'My Leave Balance', for viewing someone else's balance.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -2605,6 +4189,146 @@
                 "exec": [
                   "pm.test(\"Status is 403 insufficient_permission\", function () {",
                   "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Leave Requests - HR Queue (Manage, all employees)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/manage/?page=1&page_size=25",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "manage",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "25"
+                },
+                {
+                  "key": "employee_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "leave_type_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "start_date_from",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "start_date_to",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Leave review round: requires leave.view_leave (Admin has it by default). Every leave request across every employee, paginated and filterable \u2014 backs the redesigned Leave module tab's HR-only processing queue (the tab no longer shows any one person's own leave; see LEAVE_API.md). Each row is enriched with employee_name/employee_code.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Rows include employee_name/employee_code\", function () {",
+                  "    const body = pm.response.json();",
+                  "    if (body.data.length > 0) {",
+                  "        pm.expect(body.data[0]).to.have.property(\"employee_name\");",
+                  "        pm.expect(body.data[0]).to.have.property(\"employee_code\");",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Leave Requests - HR Queue (filtered by employee_id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/manage/?employee_id={{linked_employee_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "manage",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "employee_id",
+                  "value": "{{linked_employee_id}}"
+                }
+              ]
+            },
+            "description": "Leave review round: same endpoint as above, scoped with employee_id to confirm the filter narrows results to just that employee (used when HR picks one person from the unscoped queue).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Every row belongs to the filtered employee\", function () {",
+                  "    const body = pm.response.json();",
+                  "    body.data.forEach((row) => pm.expect(row.employee_id).to.eql(pm.collectionVariables.get(\"linked_employee_id\")));",
                   "});"
                 ]
               }
@@ -2726,6 +4450,1194 @@
                   "    pm.response.to.have.status(409);",
                   "    pm.expect(pm.response.json().error.code).to.eql(\"leave_request_not_cancellable\");",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manage Leave Types - List All (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/types/manage/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "types",
+                "manage"
+              ]
+            },
+            "description": "Requires leave.manage_leave. Every leave type, active or inactive (paginated, searchable) \u2014 distinct from 'List Leave Types' above, which stays active-only for apply-leave dropdowns.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Leave Type (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/types/manage/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "types",
+                "manage"
+              ]
+            },
+            "description": "Requires leave.manage_leave. Captures new_leave_type_id for the Update request below.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Compassionate Leave\",\n  \"code\": \"COMPASSIONATE\",\n  \"default_annual_days\": \"5.00\",\n  \"is_paid\": true,\n  \"requires_approval\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set(\"new_leave_type_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Leave Type - Duplicate Code (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/types/manage/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "types",
+                "manage"
+              ]
+            },
+            "description": "Requires leave.manage_leave. Reuses the ANNUAL code seeded by migration 0003 \u2014 expects 409 duplicate_leave_type_code.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Another Annual\",\n  \"code\": \"ANNUAL\",\n  \"default_annual_days\": \"5.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"Error code is duplicate_leave_type_code\", function () { pm.expect(pm.response.json().error.code).to.eql(\"duplicate_leave_type_code\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Leave Type (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/types/manage/{{new_leave_type_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "types",
+                "manage",
+                "{{new_leave_type_id}}"
+              ]
+            },
+            "description": "Requires leave.manage_leave. Full-replace update of the leave type created above.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Compassionate Leave\",\n  \"code\": \"COMPASSIONATE\",\n  \"default_annual_days\": \"7.00\",\n  \"is_paid\": true,\n  \"requires_approval\": true,\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"default_annual_days updated\", function () { pm.expect(pm.response.json().data.default_annual_days).to.eql(\"7.00\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave For Employee (HR/Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/employee/{{linked_employee_id}}/apply/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "employee",
+                "{{linked_employee_id}}",
+                "apply"
+              ]
+            },
+            "description": "Requires leave.manage_leave. HR/Admin applies for leave on the named employee's behalf \u2014 same validation pipeline and approval workflow as self-service Apply Leave. Captures hr_leave_request_id.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2027-03-01\",\n  \"end_date\": \"2027-03-03\",\n  \"reason\": \"HR-initiated leave\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"employee_id matches\", function () { pm.expect(json.data.employee_id).to.eql(pm.collectionVariables.get(\"linked_employee_id\")); });",
+                  "pm.collectionVariables.set(\"hr_leave_request_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel Leave Request For Employee (HR/Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{hr_leave_request_id}}/cancel-for-employee/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{hr_leave_request_id}}",
+                "cancel-for-employee"
+              ]
+            },
+            "description": "Requires leave.manage_leave. Bypasses the ownership check \u2014 only a leave.manage_leave-holding caller reaches this endpoint at all.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cancellation_reason\": \"HR-initiated cancellation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"status is cancelled\", function () { pm.expect(pm.response.json().data.status).to.eql(\"cancelled\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adjust/Open Leave Balance (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/balances/adjust/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "balances",
+                "adjust"
+              ]
+            },
+            "description": "Requires leave.manage_leave. One upsert path backs both Leave Balance Opening (no row exists yet -> adjustment_type: opening) and Leave Balance Adjustment (row exists -> adjustment_type: adjustment). Always writes an immutable audit row.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{linked_employee_id}}\",\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"year\": 2028,\n  \"entitled_days\": \"22.00\",\n  \"used_days\": \"0.00\",\n  \"carried_forward_days\": \"3.00\",\n  \"reason\": \"Opening entitlement for the new year\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"adjustment_type is opening\", function () { pm.expect(pm.response.json().data.adjustment_type).to.eql(\"opening\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Approvals",
+      "item": [
+        {
+          "name": "Apply Leave (For Approval Decision)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "A fresh application distinct from folder 7's (which gets cancelled at the end of that folder) \u2014 this is the one folder 8 decides on. Requires folder 7 to have run fully first (manager assigned + Telegram-linked). Captures approval_leave_request_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-11-02\",\n  \"end_date\": \"2026-11-04\",\n  \"reason\": \"Approval engine test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"status is pending\", function () { pm.expect(json.data.status).to.eql(\"pending\"); });",
+                  "pm.collectionVariables.set(\"approval_leave_request_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Pending Approvals - As Manager (Telegram)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/telegram/pending/?telegram_user_id={{manager_telegram_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "telegram",
+                "pending"
+              ],
+              "query": [
+                {
+                  "key": "telegram_user_id",
+                  "value": "{{manager_telegram_user_id}}"
+                }
+              ]
+            },
+            "description": "Margaret checking her pending approvals via the Telegram-facing surface \u2014 the same one the Gateway's /pending_approvals command calls (TELEGRAM_GATEWAY.md \u00a73d). Finds the item opened by the request above and captures approval_request_id."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "var item = json.data.find(function(r) { return r.subject_id === pm.collectionVariables.get(\"approval_leave_request_id\"); });",
+                  "pm.test(\"Pending approval found for the new leave request\", function () { pm.expect(item).to.exist; });",
+                  "pm.test(\"subject_type is leave.leave_request\", function () { pm.expect(item.subject_type).to.eql(\"leave.leave_request\"); });",
+                  "pm.test(\"current_level is 1\", function () { pm.expect(item.current_level).to.eql(1); });",
+                  "pm.test(\"level-1 approver is the manager\", function () {",
+                  "    pm.expect(item.steps[0].approver_employee_id).to.eql(pm.collectionVariables.get(\"manager_employee_id\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"approval_request_id\", item.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Approval Request Detail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/{{approval_request_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "{{approval_request_id}}"
+              ]
+            },
+            "description": "Admin holds approvals.view_approvals (seeded onto the Admin role), so this succeeds even though the admin user is neither the requester nor the approver.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"subject_id matches\", function () {",
+                  "    pm.expect(pm.response.json().data.subject_id).to.eql(pm.collectionVariables.get(\"approval_leave_request_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Decide - Wrong Approver (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/{{approval_request_id}}/decide/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "{{approval_request_id}}",
+                "decide"
+              ]
+            },
+            "description": "Grace (the requester, not the assigned approver) attempts to decide her own request via the self-service JWT surface.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403 not_the_assigned_approver\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"not_the_assigned_approver\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Decide - Approve (As Manager, Telegram)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/telegram/decide/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "telegram",
+                "decide"
+              ]
+            },
+            "description": "Margaret approves via the Telegram-facing surface \u2014 the same endpoint the Gateway's inline Approve button calls. Leave review round: the chain is now two levels (manager, then any approvals.level2_approve holder), so this only advances the request to level 2 \u2014 it does NOT finalize it. The response's own status still reads \"pending\", current_level 2. Approval Workflow Changes v2: level 1 is no longer Telegram-only \u2014 Margaret could equally have decided this from the web instead, if she held approvals.level1_approve \u2014 but this Postman flow exercises the Telegram path, exactly as a real manager would use it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telegram_user_id\": {{manager_telegram_user_id}},\n  \"approval_request_id\": \"{{approval_request_id}}\",\n  \"decision\": \"approve\",\n  \"comments\": \"Approved via Postman test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"status is still pending (manager alone does not finalize)\", function () { pm.expect(json.data.status).to.eql(\"pending\"); });",
+                  "pm.test(\"current_level advanced to 2\", function () { pm.expect(json.data.current_level).to.eql(2); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Leave Request Detail - Confirms Still Pending (Manager-Only Approval)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{approval_leave_request_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{approval_leave_request_id}}"
+              ]
+            },
+            "description": "Leave review round: proves the manager's approval alone did NOT finalize the leave -- status is still pending, approved_by/decided_at are still null. Balance is also unaffected at this point.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"status is still pending\", function () { pm.expect(json.data.status).to.eql(\"pending\"); });",
+                  "pm.test(\"approved_by is still null\", function () { pm.expect(json.data.approved_by).to.eql(null); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Pending Approvals - As Admin (Level 2, HR/Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/pending/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "pending",
+                "me",
+                ""
+              ]
+            },
+            "description": "Leave review round: the Admin/HR user (linked to hr_approver_employee_id via folder 7's 'Create HR Approver Employee' request) checks their own pending approvals via the self-service (JWT) surface. The step is assigned by approver_permission_code (\"approvals.level2_approve\" as of Approval Workflow Changes v2 -- previously \"leave.manage_leave\"), not one named employee -- ANY user holding that permission sees the same item here.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "var item = json.data.find(function(r) { return r.subject_id === pm.collectionVariables.get(\"approval_leave_request_id\"); });",
+                  "pm.test(\"Level-2 pending approval found\", function () { pm.expect(item).to.exist; });",
+                  "pm.test(\"current_level is 2\", function () { pm.expect(item.current_level).to.eql(2); });",
+                  "var step2 = item.steps.find(function(s) { return s.level === 2; });",
+                  "pm.test(\"level-2 step is assigned by permission, not one employee\", function () {",
+                  "    pm.expect(step2.approver_employee_id).to.eql(null);",
+                  "    pm.expect(step2.approver_permission_code).to.eql(\"approvals.level2_approve\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Decide - Approve (As Admin, Level 2, Final)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/{{approval_request_id}}/decide/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "{{approval_request_id}}",
+                "decide",
+                ""
+              ]
+            },
+            "description": "Leave review round: the HR/Admin user decides the level-2 step via the self-service (JWT) surface -- this is the decision that actually finalizes the leave (updates LeaveRequest.status, decrements the balance, and triggers the applicant's final Telegram confirmation, per LEAVE_API.md's 'Approval integration' section). Any other approvals.level2_approve holder could have called this instead; it isn't tied to hr_approver_employee_id specifically.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\",\n  \"comments\": \"Approved by HR/Admin - final\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"status is approved\", function () { pm.expect(pm.response.json().data.status).to.eql(\"approved\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Leave Request Detail - Confirms Fully Approved (After HR Decision)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{approval_leave_request_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{approval_leave_request_id}}",
+                ""
+              ]
+            },
+            "description": "Confirms the level-2 HR/Admin decision -- and only that decision -- is what flowed back through EventBus into apps.leave's handle_approval_decided and updated the LeaveRequest itself (approved_by is the HR/Admin employee, not the manager; decision_comments carries the HR/Admin's comment, not the manager's level-1 comment).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"status is approved\", function () { pm.expect(json.data.status).to.eql(\"approved\"); });",
+                  "pm.test(\"approved_by is the HR/Admin employee, not the manager\", function () {",
+                  "    pm.expect(json.data.approved_by).to.eql(pm.collectionVariables.get(\"hr_approver_employee_id\"));",
+                  "});",
+                  "pm.test(\"decision_comments carries the HR/Admin's comment\", function () {",
+                  "    pm.expect(json.data.decision_comments).to.eql(\"Approved by HR/Admin - final\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Decide - Already Decided (should fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/telegram/decide/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "telegram",
+                "decide"
+              ]
+            },
+            "description": "Repeats the same decision on an already-decided request \u2014 must run AFTER 'Decide - Approve' above.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telegram_user_id\": {{manager_telegram_user_id}},\n  \"approval_request_id\": \"{{approval_request_id}}\",\n  \"decision\": \"approve\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 approval_request_not_pending\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"approval_request_not_pending\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply Leave (For Reject Decision)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests"
+              ]
+            },
+            "description": "A second, independent fresh application to exercise the reject path separately from the approve path above. Captures reject_leave_request_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{leave_type_id}}\",\n  \"start_date\": \"2026-12-01\",\n  \"end_date\": \"2026-12-02\",\n  \"reason\": \"Reject test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set(\"reject_leave_request_id\", json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Pending Approvals - As Manager (Telegram) - Reject Flow",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/telegram/pending/?telegram_user_id={{manager_telegram_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "telegram",
+                "pending"
+              ],
+              "query": [
+                {
+                  "key": "telegram_user_id",
+                  "value": "{{manager_telegram_user_id}}"
+                }
+              ]
+            },
+            "description": "Finds the approval request opened by 'Apply Leave (For Reject Decision)' above and captures reject_approval_request_id."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "var item = json.data.find(function(r) { return r.subject_id === pm.collectionVariables.get(\"reject_leave_request_id\"); });",
+                  "pm.test(\"Pending approval found for the reject-path request\", function () { pm.expect(item).to.exist; });",
+                  "pm.collectionVariables.set(\"reject_approval_request_id\", item.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Decide - Reject (As Manager, Telegram)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-Service-Key",
+                "value": "{{internal_service_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/telegram/decide/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "telegram",
+                "decide"
+              ]
+            },
+            "description": "Margaret rejects this one, with a real comment \u2014 mirrors TESTING_GUIDE.md Part H3's reject-path walkthrough via the same REST surface the Gateway calls.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telegram_user_id\": {{manager_telegram_user_id}},\n  \"approval_request_id\": \"{{reject_approval_request_id}}\",\n  \"decision\": \"reject\",\n  \"comments\": \"Team is short-staffed that week\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"status is rejected\", function () { pm.expect(pm.response.json().data.status).to.eql(\"rejected\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Leave Request Detail - Confirms Rejected",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leave/requests/{{reject_leave_request_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leave",
+                "requests",
+                "{{reject_leave_request_id}}"
+              ]
+            },
+            "description": "Confirms the reject path also flowed back through EventBus into the LeaveRequest itself.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{new_user_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test(\"status is rejected\", function () { pm.expect(json.data.status).to.eql(\"rejected\"); });",
+                  "pm.test(\"decision_comments carried through\", function () {",
+                  "    pm.expect(json.data.decision_comments).to.eql(\"Team is short-staffed that week\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Approval History By Subject",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/approvals/subject/leave.leave_request/{{leave_request_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals",
+                "subject",
+                "leave.leave_request",
+                "{{leave_request_id}}"
+              ]
+            },
+            "description": "Pure delegation to ApprovalService.list_by_subject \u2014 subject-agnostic. Visible to the requester, any approver on the chain, or a caller with approvals.view_approvals; otherwise returns an empty list rather than 404.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });"
                 ]
               }
             }

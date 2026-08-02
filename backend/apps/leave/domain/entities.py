@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from apps.leave.domain.enums import LeaveRequestStatus
+from apps.leave.domain.enums import LeaveBalanceAdjustmentType, LeaveRequestStatus
 from shared_kernel.domain.base_entity import Entity
 from shared_kernel.domain.value_objects import DateRange
 
@@ -27,6 +27,14 @@ class LeaveType(Entity):
     is_paid: bool = True
     requires_approval: bool = True
     is_active: bool = True
+    # Round 14 items 6/8 — which Employee Current Status an approved
+    # request of this type drives while it's in progress (see
+    # domain/employee_status_mapping.py for the allowed values and the
+    # reasoning for using plain strings, not an imported Employees enum).
+    # `None` means this leave type never changes the employee's Current
+    # Status at all (e.g. an unpaid leave type HR doesn't want reflected
+    # there).
+    maps_to_employee_status: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -87,6 +95,21 @@ class LeaveRequest(Entity):
     # --- Cancellation ------------------------------------------------
     cancelled_at: datetime | None = None
     cancellation_reason: str | None = None
+    # --- Working-day calculation (round 14 item 6) ------------------------
+    # Computed once, at apply time, by `LeaveRequestService.apply_leave`
+    # (via `domain/working_days_calculator.py`) and stored — not recomputed
+    # on every read, matching `total_days`'s own "denormalized, stored"
+    # precedent below exactly, and for the same practical reason: the
+    # week-off/holiday configuration this value was computed against can
+    # change later, but a request's own working_days must not silently
+    # change retroactively with it. Balance deduction (approve/cancel) uses
+    # this value, never `total_days`.
+    working_days: Decimal = Decimal("0")
+    # Snapshot of the employee's available balance for this leave type/year
+    # at the moment they applied — round 14 item 2 ("display employee leave
+    # balance at the time the leave was applied"). `None` only for legacy
+    # rows created before this column existed.
+    balance_at_application: Decimal | None = None
 
     @property
     def total_days(self) -> Decimal:
@@ -116,6 +139,8 @@ class LeaveRequest(Entity):
             decision_comments=self.decision_comments,
             cancelled_at=cancelled_at,
             cancellation_reason=reason,
+            working_days=self.working_days,
+            balance_at_application=self.balance_at_application,
         )
 
     def approve(self, *, approved_by: uuid.UUID, decided_at: datetime, comments: str | None = None) -> "LeaveRequest":
@@ -141,6 +166,8 @@ class LeaveRequest(Entity):
             decision_comments=comments,
             cancelled_at=self.cancelled_at,
             cancellation_reason=self.cancellation_reason,
+            working_days=self.working_days,
+            balance_at_application=self.balance_at_application,
         )
 
     def reject(self, *, decided_at: datetime, comments: str | None = None) -> "LeaveRequest":
@@ -163,5 +190,29 @@ class LeaveRequest(Entity):
             decision_comments=comments,
             cancelled_at=self.cancelled_at,
             cancellation_reason=self.cancellation_reason,
+            working_days=self.working_days,
+            balance_at_application=self.balance_at_application,
         )
+
+
+@dataclass(kw_only=True)
+class LeaveBalanceAdjustment(Entity):
+    """Phase 13 (Leave Balance Adjustment / Opening) — one immutable audit
+    row per `LeaveBalanceService.adjust_balance()` call. Unlike `LeaveBalance`
+    above, this entity has no behavior/state-transition methods of its own:
+    it is a write-once record of a fact that already happened, never itself
+    mutated after creation (see `LeaveBalanceAdjustmentRepository`'s
+    docstring — its ABC deliberately has no update/delete)."""
+
+    employee_id: uuid.UUID
+    leave_type_id: uuid.UUID
+    year: int
+    adjustment_type: LeaveBalanceAdjustmentType
+    previous_entitled_days: Decimal
+    previous_used_days: Decimal
+    previous_carried_forward_days: Decimal
+    new_entitled_days: Decimal
+    new_used_days: Decimal
+    new_carried_forward_days: Decimal
+    reason: str
 

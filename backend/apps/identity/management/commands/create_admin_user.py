@@ -1,10 +1,15 @@
-"""Bootstraps the first HR Admin account.
+"""Bootstraps the first Admin account.
 
 Necessary because of a chicken-and-egg problem: creating a user via the API
 requires the identity.manage_users permission, which requires an existing
-HR Admin to grant it. This command is the one way into the system before
+Admin to grant it. This command is the one way into the system before
 any user exists — analogous to Django's own `createsuperuser`, scoped to
 this project's own RBAC model instead of Django's.
+
+"Admin" (renamed from "HR Admin" — see migration
+0006_rename_admin_role_and_prune_system_roles.py) is the only system role
+that still ships seeded; every other role is created and managed from the
+Role Management UI.
 
 Location note: this file MUST live at apps/identity/management/commands/ —
 Django only auto-discovers management commands directly under
@@ -30,7 +35,7 @@ from shared_kernel.infrastructure.django_unit_of_work import DjangoUnitOfWork
 
 
 class Command(BaseCommand):
-    help = "Creates the first HR Admin user account."
+    help = "Creates the first Admin user account."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument("--email", required=True)
@@ -53,15 +58,16 @@ class Command(BaseCommand):
         except DuplicateEmailError as exc:
             raise CommandError(str(exc)) from exc
 
-        hr_admin_role = role_repository.get_by_name("HR Admin")
-        if hr_admin_role is None:
+        admin_role = role_repository.get_by_name("Admin")
+        if admin_role is None:
             raise CommandError(
-                "The 'HR Admin' system role does not exist — run "
-                "`python manage.py migrate` first (it's seeded by migration 0002)."
+                "The 'Admin' system role does not exist — run "
+                "`python manage.py migrate` first (it's seeded by migration 0002 and "
+                "renamed from 'HR Admin' by migration 0006)."
             )
 
-        user_repository.assign_role(user.id, hr_admin_role.id, assigned_by=None)
+        user_repository.assign_role(user.id, admin_role.id, assigned_by=None)
 
         self.stdout.write(
-            self.style.SUCCESS(f"Created HR Admin user '{user.email}' (id={user.id}).")
+            self.style.SUCCESS(f"Created Admin user '{user.email}' (id={user.id}).")
         )

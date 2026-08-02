@@ -11,7 +11,7 @@ from apps.employees.interface.telegram_views import (
     RequestEmployeeTelegramLinkView,
     VerifyEmployeeTelegramLinkView,
 )
-from apps.employees.interface.viewsets import EmployeeViewSet
+from apps.employees.interface.viewsets import DepartmentViewSet, EmployeeViewSet
 
 urlpatterns = [
     path(
@@ -21,6 +21,19 @@ urlpatterns = [
     ),
     path("search/", EmployeeViewSet.as_view({"get": "search"}), name="employee-search"),
     path("me/", EmployeeViewSet.as_view({"get": "me"}), name="employee-me"),
+    # --- Department CRUD (Phase 12) — listed before the generic
+    # <uuid:pk>/ employee routes below purely for readability grouping;
+    # the uuid path converter wouldn't match "departments" anyway.
+    path(
+        "departments/",
+        DepartmentViewSet.as_view({"get": "list", "post": "create"}),
+        name="department-list-create",
+    ),
+    path(
+        "departments/<uuid:pk>/",
+        DepartmentViewSet.as_view({"get": "retrieve", "patch": "update"}),
+        name="department-detail",
+    ),
     # --- Telegram linking (Gateway-facing only — see telegram_views.py) --
     path(
         "telegram/link/request/",
@@ -41,6 +54,11 @@ urlpatterns = [
         name="employee-detail",
     ),
     path(
+        "<uuid:pk>/link-user/",
+        EmployeeViewSet.as_view({"post": "link_user"}),
+        name="employee-link-user",
+    ),
+    path(
         "<uuid:pk>/activate/",
         EmployeeViewSet.as_view({"post": "activate"}),
         name="employee-activate",
@@ -49,5 +67,10 @@ urlpatterns = [
         "<uuid:pk>/deactivate/",
         EmployeeViewSet.as_view({"post": "deactivate"}),
         name="employee-deactivate",
+    ),
+    path(
+        "<uuid:pk>/current-status/",
+        EmployeeViewSet.as_view({"post": "update_current_status"}),
+        name="employee-update-current-status",
     ),
 ]

@@ -18,6 +18,28 @@ class LeaveTypeNotFoundError(NotFoundError):
     code = "leave_type_not_found"
 
 
+class InvalidEmployeeStatusMappingError(ValidationError):
+    """Round 14 items 6/8 — `maps_to_employee_status` was set to a value
+    other than `None`, `"sick_leave"`, or `"annual_leave"` — see
+    `domain/employee_status_mapping.py`'s `ALLOWED_EMPLOYEE_STATUS_MAPPINGS`."""
+
+    code = "invalid_employee_status_mapping"
+
+
+class DuplicateLeaveTypeCodeError(ConflictError):
+    """Another leave type already uses this code (Phase 13: Leave Type
+    Management create/update) — same reasoning as
+    `apps.employees.domain.exceptions.DuplicateDepartmentCodeError`."""
+
+    code = "duplicate_leave_type_code"
+
+
+class LeaveTypeReferencedByLeaveRequestError(ConflictError):
+    """This leave type cannot be edited or deactivated because it is referenced by a recorded or approved leave request. Cancel the related leave request(s) first."""
+
+    code = "leave_type_referenced_by_leave_request"
+
+
 class LeaveBalanceNotFoundError(NotFoundError):
     """No leave balance record exists for this employee/leave type/year.
 
@@ -50,6 +72,36 @@ class LeaveEmployeeNotFoundError(NotFoundError):
     """
 
     code = "employee_not_found"
+
+
+class NoManagerAssignedError(ValidationError):
+    """No manager is assigned to your account. Please contact HR.
+
+    Phase 9 (Approval Engine): a leave request cannot be submitted for
+    approval at all without a level-1 approver. Checked in
+    `LeaveValidationService` before a `LeaveRequest` is ever created — the
+    whole `apply_leave` call aborts, matching every other validate_* step's
+    "raise before creating anything" shape. The exact wording is
+    intentional — it is shown to the employee verbatim (both in this raw
+    API error envelope and, identically, in the Telegram Gateway's
+    `errors.py`).
+    """
+
+    code = "no_manager_assigned"
+
+
+class ManagerNotLinkedToTelegramError(ValidationError):
+    """Your manager has not linked their Telegram account yet. Please
+    contact HR.
+
+    Phase 9 (Approval Engine): the manager is this employee's resolved
+    level-1 approver, but has no way to be notified/act via Telegram yet.
+    Same "abort before creating anything" shape as
+    `NoManagerAssignedError`; exact wording is intentional (shown verbatim
+    to the employee).
+    """
+
+    code = "manager_not_linked_to_telegram"
 
 
 class InsufficientLeaveBalanceError(ValidationError):
@@ -109,6 +161,31 @@ class LeaveRequestNotInPendingStateError(ConflictError):
     """
 
     code = "leave_request_not_pending"
+
+
+class InvalidLeaveBalanceAdjustmentError(ValidationError):
+    """A Leave Balance Adjustment/Opening (Phase 13) was submitted with a
+    negative entitled/used/carried-forward value — the same
+    CheckConstraint the `leave_balances` table already enforces at the
+    database level, checked here first so the caller gets a clear 422
+    instead of a raw IntegrityError."""
+
+    code = "invalid_leave_balance_adjustment"
+
+
+class EmployeeNotEligibleForLeaveError(ValidationError):
+    """This employee's current status does not permit applying for leave right now (e.g. Not Joined, Terminated, or Resigned).
+
+    Round 14 item 6. A distinct class from any Employees-side exception, same reasoning as
+    `LeaveEmployeeNotFoundError` above — this module's domain layer never
+    imports another module's domain layer; the eligibility fact itself is
+    read through `EmployeeLookupPort.is_employee_eligible_for_leave`
+    (application/ports.py), backed by
+    `apps.employees.domain.entities.Employee.is_eligible_for_leave` on the
+    other side of that port.
+    """
+
+    code = "employee_not_eligible_for_leave"
 
 
 class LeaveRequestOwnershipError(ValidationError):

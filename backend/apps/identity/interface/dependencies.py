@@ -10,17 +10,29 @@ once a real one exists — a one-file change.
 """
 from __future__ import annotations
 
+from apps.identity.application.use_cases.activate_user import ActivateUserUseCase
 from apps.identity.application.use_cases.assign_role_to_user import AssignRoleToUserUseCase
 from apps.identity.application.use_cases.confirm_password_reset import ConfirmPasswordResetUseCase
 from apps.identity.application.use_cases.create_role import CreateRoleUseCase
 from apps.identity.application.use_cases.create_user import CreateUserUseCase
+from apps.identity.application.use_cases.deactivate_user import DeactivateUserUseCase
+from apps.identity.application.use_cases.delete_role import DeleteRoleUseCase
 from apps.identity.application.use_cases.get_current_user import GetCurrentUserUseCase
+from apps.identity.application.use_cases.get_permission_codes_for_employee import (
+    GetPermissionCodesForEmployeeUseCase,
+)
+from apps.identity.application.use_cases.get_role_by_id import GetRoleByIdUseCase
+from apps.identity.application.use_cases.get_user_by_id import GetUserByIdUseCase
+from apps.identity.application.use_cases.list_permissions import ListPermissionsUseCase
 from apps.identity.application.use_cases.list_roles import ListRolesUseCase
+from apps.identity.application.use_cases.list_users import ListUsersUseCase
 from apps.identity.application.use_cases.login_user import LoginUserUseCase
 from apps.identity.application.use_cases.logout_user import LogoutUserUseCase
 from apps.identity.application.use_cases.refresh_access_token import RefreshAccessTokenUseCase
 from apps.identity.application.use_cases.request_password_reset import RequestPasswordResetUseCase
 from apps.identity.application.use_cases.revoke_role_from_user import RevokeRoleFromUserUseCase
+from apps.identity.application.use_cases.update_role import UpdateRoleUseCase
+from apps.identity.application.use_cases.update_user import UpdateUserUseCase
 from apps.identity.infrastructure.email_sender import LoggingEmailSender
 from apps.identity.infrastructure.jwt_service import PyJWTTokenService
 from apps.identity.infrastructure.password_hasher import DjangoPasswordHasher
@@ -78,6 +90,33 @@ def build_create_user_use_case() -> CreateUserUseCase:
     )
 
 
+def build_list_users_use_case() -> ListUsersUseCase:
+    return ListUsersUseCase(user_repository=DjangoUserRepository())
+
+
+def build_get_user_by_id_use_case() -> GetUserByIdUseCase:
+    return GetUserByIdUseCase(user_repository=DjangoUserRepository())
+
+
+def build_get_permission_codes_for_employee_use_case() -> GetPermissionCodesForEmployeeUseCase:
+    """Public entry point for `apps.approvals`'s `ApprovalAuthorizationPort`
+    adapter — see that class's docstring for why this is the one
+    cross-module call it's allowed to make into Identity."""
+    return GetPermissionCodesForEmployeeUseCase(user_repository=DjangoUserRepository())
+
+
+def build_update_user_use_case() -> UpdateUserUseCase:
+    return UpdateUserUseCase(user_repository=DjangoUserRepository(), unit_of_work=DjangoUnitOfWork())
+
+
+def build_activate_user_use_case() -> ActivateUserUseCase:
+    return ActivateUserUseCase(user_repository=DjangoUserRepository(), unit_of_work=DjangoUnitOfWork())
+
+
+def build_deactivate_user_use_case() -> DeactivateUserUseCase:
+    return DeactivateUserUseCase(user_repository=DjangoUserRepository(), unit_of_work=DjangoUnitOfWork())
+
+
 def build_create_role_use_case() -> CreateRoleUseCase:
     return CreateRoleUseCase(
         role_repository=DjangoRoleRepository(),
@@ -88,6 +127,26 @@ def build_create_role_use_case() -> CreateRoleUseCase:
 
 def build_list_roles_use_case() -> ListRolesUseCase:
     return ListRolesUseCase(role_repository=DjangoRoleRepository())
+
+
+def build_get_role_by_id_use_case() -> GetRoleByIdUseCase:
+    return GetRoleByIdUseCase(role_repository=DjangoRoleRepository())
+
+
+def build_update_role_use_case() -> UpdateRoleUseCase:
+    return UpdateRoleUseCase(
+        role_repository=DjangoRoleRepository(),
+        permission_repository=DjangoPermissionRepository(),
+        unit_of_work=DjangoUnitOfWork(),
+    )
+
+
+def build_delete_role_use_case() -> DeleteRoleUseCase:
+    return DeleteRoleUseCase(role_repository=DjangoRoleRepository(), unit_of_work=DjangoUnitOfWork())
+
+
+def build_list_permissions_use_case() -> ListPermissionsUseCase:
+    return ListPermissionsUseCase(permission_repository=DjangoPermissionRepository())
 
 
 def build_assign_role_use_case() -> AssignRoleToUserUseCase:

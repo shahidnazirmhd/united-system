@@ -19,6 +19,8 @@ def _profile(**overrides) -> EmployeeProfile:
         employment_type="full_time",
         date_of_joining="2024-01-15",
         status="active",
+        # Round 15 items 7/8 — see EmployeeProfile's own docstring comment.
+        current_status="working",
         is_linked_to_telegram=True,
         telegram_username="ada",
     )

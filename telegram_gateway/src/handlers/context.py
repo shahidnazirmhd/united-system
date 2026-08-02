@@ -27,9 +27,11 @@ if TYPE_CHECKING:
     # testable with hand-rolled fakes and zero third-party packages
     # installed, mirroring the backend's "domain/application layer has no
     # framework dependency" discipline (HRMS_Architecture.md section 1.2).
+    from src.api_client.endpoints.approvals import ApprovalsEndpoint
     from src.api_client.endpoints.employees import EmployeesEndpoint
     from src.api_client.endpoints.leave import LeaveEndpoint
     from src.auth.account_linking import AccountLinkingService
+    from src.auth.approval_decision import ApprovalDecisionService
     from src.auth.leave_application import LeaveApplicationService
     from src.telegram_client.bot_api_client import BotAPIClient
     from src.telegram_client.types import TelegramUpdate
@@ -43,6 +45,8 @@ class HandlerContext:
     employees: EmployeesEndpoint
     leave: LeaveEndpoint
     leave_application: LeaveApplicationService
+    approvals: ApprovalsEndpoint
+    approval_decision: ApprovalDecisionService
 
     # Convenience accessors — every handler needs these, so resolving them
     # once here (rather than every handler re-deriving from `update`) keeps

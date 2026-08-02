@@ -3,14 +3,23 @@ from __future__ import annotations
 
 from src.api_client.endpoints.employees import TelegramLinkStatus
 from src.auth.account_linking import AccountLinkingService
+from src.auth.approval_decision import ApprovalDecisionService
 from src.auth.leave_application import LeaveApplicationService
 from src.handlers import start_handler
 from src.handlers.context import HandlerContext
-from tests.fakes import FakeBotAPIClient, FakeEmployeesEndpoint, FakeLeaveEndpoint, FakeRedis, FakeTelegramUpdate
+from tests.fakes import (
+    FakeApprovalsEndpoint,
+    FakeBotAPIClient,
+    FakeEmployeesEndpoint,
+    FakeLeaveEndpoint,
+    FakeRedis,
+    FakeTelegramUpdate,
+)
 
 
 def _ctx(update, employees) -> HandlerContext:
     leave = FakeLeaveEndpoint()
+    approvals = FakeApprovalsEndpoint()
     return HandlerContext(
         update=update,
         bot=FakeBotAPIClient(),
@@ -18,6 +27,8 @@ def _ctx(update, employees) -> HandlerContext:
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, FakeRedis()),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
 
 

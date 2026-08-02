@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from types import TracebackType
+from typing import Callable
 
 from django.db import transaction
 
@@ -32,3 +33,13 @@ class DjangoUnitOfWork(UnitOfWork):
 
     def rollback(self) -> None:
         transaction.set_rollback(True)
+
+    def on_commit(self, callback: Callable[[], None]) -> None:
+        # The one place `django.db.transaction` is allowed to leak in for
+        # this concern — application-layer callers (e.g. ApprovalService)
+        # only ever see UnitOfWork.on_commit's abstract signature, never
+        # this import, keeping Clean Architecture's dependency rule intact.
+        # Deferring to Django's own mechanism is correct even outside an
+        # atomic block: Django runs the callback immediately in that case,
+        # which is exactly what "nothing to wait for" should mean here too.
+        transaction.on_commit(callback)

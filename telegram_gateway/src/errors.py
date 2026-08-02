@@ -46,6 +46,13 @@ class NoLeaveApplicationInProgressError(GatewayError):
     since expired) for this chat — see auth/leave_application.py."""
 
 
+class NoApprovalDecisionInProgressError(GatewayError):
+    """A free-text reply arrived that looks like it's continuing an
+    approval decision's optional-comment step, but no such decision is
+    pending (or has since expired) for this chat — see
+    auth/approval_decision.py."""
+
+
 class TelegramAPIError(GatewayError):
     """The Telegram Bot API itself returned a non-ok response (send/edit
     message, answer callback query, etc.).
@@ -129,6 +136,26 @@ _FRIENDLY_MESSAGES: dict[str, str] = {
     "leave_request_ownership_mismatch": "That leave request doesn't belong to you.",
     "leave_request_not_cancellable": "That leave request can no longer be cancelled (it may already be "
     "cancelled or rejected).",
+    # --- Approval Engine (Phase 9) — apps.approvals.domain.exceptions's
+    # `code` values, same vocabulary-reuse discipline as above.
+    "approval_request_not_found": "We couldn't find that approval request.",
+    "approval_step_not_found": "Something went wrong looking up that approval. Please try again in a moment.",
+    "no_approval_chain_resolver_registered": "Something went wrong on our end. Please try again in a moment.",
+    "no_approver_available": "That request couldn't be routed for approval. Please contact HR.",
+    "approval_request_not_pending": "That request has already been decided.",
+    "approval_step_not_pending": "That request has already been decided.",
+    "not_the_assigned_approver": "That request isn't waiting on your approval.",
+    # --- Leave's own Approval Engine preconditions (apps.leave.domain.
+    # exceptions), shown to the *employee* applying for leave — exact
+    # wording as specified for this phase.
+    "no_manager_assigned": "No manager is assigned to your account. Please contact HR.",
+    "manager_not_linked_to_telegram": "Your manager has not linked their Telegram account yet. Please contact HR.",
+    # Round 16 item 1 bugfix: this code was missing from this table
+    # entirely, so it fell through to the generic "Something went wrong"
+    # message instead of explaining why the application was rejected.
+    "employee_not_eligible_for_leave": "Your current status doesn't allow applying for leave right now "
+    "(e.g. you haven't joined yet, or your employment has ended). Please contact HR if you believe this is "
+    "incorrect.",
 }
 
 _DEFAULT_FRIENDLY_MESSAGE = "Something went wrong on our end. Please try again in a moment."
@@ -151,6 +178,8 @@ def friendly_message_for(error: Exception) -> str:
             "few minutes for it to expire before trying again."
     if isinstance(error, NoLeaveApplicationInProgressError):
         return "I wasn't expecting that. Send /apply_leave to start a new leave application."
+    if isinstance(error, NoApprovalDecisionInProgressError):
+        return "I wasn't expecting that. Send /pending_approvals to see what's waiting on you."
     if isinstance(error, TelegramAPIError):
         return _DEFAULT_FRIENDLY_MESSAGE
     return _DEFAULT_FRIENDLY_MESSAGE

@@ -53,3 +53,15 @@ ACTIVE_LEAVE_REQUEST_STATUSES: tuple[LeaveRequestStatus, ...] = (
     LeaveRequestStatus.PENDING,
     LeaveRequestStatus.APPROVED,
 )
+
+
+class LeaveBalanceAdjustmentType(BaseEnum):
+    """Phase 13 (Leave Balance Adjustment / Opening) — one upsert write path
+    (`LeaveBalanceService.adjust_balance`) backs both named features; this is
+    the audit trail's record of *which* one a given row was. `OPENING`: no
+    balance row existed yet for this employee/leave type/year (a new year's
+    entitlement, or a leave type added after the employee joined). `ADJUSTMENT`:
+    an existing row's values were corrected."""
+
+    OPENING = "opening"
+    ADJUSTMENT = "adjustment"

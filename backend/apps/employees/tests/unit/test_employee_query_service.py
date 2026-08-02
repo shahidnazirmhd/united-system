@@ -9,7 +9,7 @@ import pytest
 
 from apps.employees.application.dtos import EmployeeListQuery
 from apps.employees.application.services.employee_query_service import EmployeeQueryService
-from apps.employees.domain.entities import Employee
+from apps.employees.domain.entities import Department, Employee
 from apps.employees.domain.enums import EmploymentType
 from apps.employees.domain.exceptions import EmployeeNotFoundError
 from apps.employees.domain.value_objects import ContactInformation, EmployeeProfile, EmploymentInformation
@@ -17,14 +17,14 @@ from shared_kernel.domain.repository import PageResult
 from shared_kernel.domain.value_objects import Email
 
 
-def _employee(first_name: str, work_email: str) -> Employee:
+def _employee(first_name: str, work_email: str, *, department_id: uuid.UUID | None = None) -> Employee:
     return Employee(
         id=uuid.uuid4(),
         employee_code=f"EMP-{first_name.upper()}",
         profile=EmployeeProfile(first_name=first_name, last_name="Test"),
         contact_info=ContactInformation(work_email=Email(work_email)),
         employment_info=EmploymentInformation(
-            department_id=uuid.uuid4(),
+            department_id=department_id or uuid.uuid4(),
             job_title="Engineer",
             employment_type=EmploymentType.FULL_TIME,
             date_of_joining=date(2024, 1, 1),
@@ -79,10 +79,12 @@ class FakeEmployeeRepository:
 
 class FakeDepartmentRepository:
     """EmployeeQueryService enriches every single-record read with a
-    department name (see _to_enriched_response) — this fake stands in for
-    that lookup. An empty fake (no departments registered) is enough for
-    tests that don't assert on department_name: _to_enriched_response
-    already treats "not found" as None, not an error.
+    department name (see _to_enriched_response), and — since the "Employee
+    List table's Department column always shows '—'" bugfix — every
+    `list()`/`search()` row too (see `get_by_ids`). This fake stands in for
+    both lookups. An empty fake (no departments registered) is enough for
+    tests that don't assert on department_name: both call sites already
+    treat "not found" as None/omitted, not an error.
     """
 
     def __init__(self, departments: dict | None = None):
@@ -90,6 +92,9 @@ class FakeDepartmentRepository:
 
     def get_by_id(self, department_id):
         return self._departments.get(department_id)
+
+    def get_by_ids(self, ids):
+        return [department for dept_id, department in self._departments.items() if dept_id in ids]
 
     def exists(self, department_id):
         return department_id in self._departments
@@ -122,3 +127,33 @@ def test_list_builds_filters_from_query() -> None:
     assert repository.last_query.filters == {"department_id": department_id, "employment_status": "active"}
     assert repository.last_query.search == "ada"
     assert repository.last_query.search_fields == ("first_name", "last_name", "employee_code", "work_email")
+
+
+def test_list_resolves_department_name_for_every_row() -> None:
+    """Regression test: the Employee List table's Department column used to
+    always show "—" because `list()` never resolved `department_name` at
+    all (see this module's docstring). Two employees in the *same*
+    department also proves the batch lookup resolves both from a single
+    `get_by_ids` call, not one query per row."""
+    shared_department_id = uuid.uuid4()
+    ada = _employee("Ada", "ada@example.com", department_id=shared_department_id)
+    grace = _employee("Grace", "grace@example.com", department_id=shared_department_id)
+    department = Department(id=shared_department_id, name="General", code="GEN")
+
+    service = EmployeeQueryService(
+        FakeEmployeeRepository([ada, grace]),
+        FakeDepartmentRepository({shared_department_id: department}),
+    )
+
+    result = service.list(EmployeeListQuery())
+
+    assert {item.department_name for item in result.items} == {"General"}
+
+
+def test_list_leaves_department_name_none_for_an_unregistered_department() -> None:
+    employee = _employee("Ada", "ada@example.com")
+    service = EmployeeQueryService(FakeEmployeeRepository([employee]), FakeDepartmentRepository())
+
+    result = service.list(EmployeeListQuery())
+
+    assert result.items[0].department_name is None

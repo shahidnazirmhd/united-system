@@ -52,7 +52,6 @@ class LoginUserUseCase(UseCase[LoginRequest, TokenPairResponse]):
                 email=user.email,
                 password_hash=user.password_hash,
                 is_active=user.is_active,
-                is_system_account=user.is_system_account,
                 employee_id=user.employee_id,
                 last_login_at=datetime.now(timezone.utc),
                 password_changed_at=user.password_changed_at,

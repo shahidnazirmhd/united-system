@@ -81,10 +81,14 @@ class EmploymentInformation:
     employment_type: EmploymentType
     date_of_joining: date
     manager_id: uuid.UUID | None = None
-    termination_date: date | None = None
+    # Round 15 item 9 — renamed from `termination_date`; used for both
+    # resignation and termination cases (a single "last day of work" field
+    # rather than two separate ones, since the business rule and the check
+    # constraint below are identical either way).
+    last_working_date: date | None = None
 
     def __post_init__(self) -> None:
         validate_not_blank(self.job_title, field_name="job_title")
         validate_max_length(self.job_title, 150, field_name="job_title")
-        if self.termination_date is not None and self.termination_date < self.date_of_joining:
-            raise ValueError("termination_date must not be before date_of_joining")
+        if self.last_working_date is not None and self.last_working_date < self.date_of_joining:
+            raise ValueError("last_working_date must not be before date_of_joining")

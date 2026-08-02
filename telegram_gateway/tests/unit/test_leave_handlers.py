@@ -11,11 +11,13 @@ from datetime import date
 
 from src.api_client.endpoints.leave import LeaveBalance, LeaveHistoryPage, LeaveRequest, LeaveType
 from src.auth.account_linking import AccountLinkingService
+from src.auth.approval_decision import ApprovalDecisionService
 from src.auth.leave_application import LeaveApplicationService
 from src.handlers import calendar_widget, leave_handlers
 from src.handlers.context import HandlerContext
 from src.webhook.update_router import Dependencies, route
 from tests.fakes import (
+    FakeApprovalsEndpoint,
     FakeBotAPIClient,
     FakeCallbackMessage,
     FakeCallbackQuery,
@@ -42,13 +44,15 @@ _BALANCE = LeaveBalance(
 
 _PENDING_REQUEST = LeaveRequest(
     id="req-1", employee_id="emp-1", leave_type_id="lt-annual", leave_type_name="Annual Leave",
-    start_date="2026-09-01", end_date="2026-09-03", total_days="3.00", reason="Trip", status="pending",
+    start_date="2026-09-01", end_date="2026-09-03", total_days="3.00", working_days="3.00",
+    reason="Trip", status="pending",
     approved_by=None, decided_at=None, decision_comments=None, cancelled_at=None, cancellation_reason=None,
 )
 
 _REJECTED_REQUEST = LeaveRequest(
     id="req-2", employee_id="emp-1", leave_type_id="lt-sick", leave_type_name="Sick Leave",
-    start_date="2026-05-01", end_date="2026-05-02", total_days="2.00", reason=None, status="rejected",
+    start_date="2026-05-01", end_date="2026-05-02", total_days="2.00", working_days="2.00",
+    reason=None, status="rejected",
     approved_by=None, decided_at="2026-04-20T10:00:00Z", decision_comments="Not enough coverage",
     cancelled_at=None, cancellation_reason=None,
 )
@@ -57,6 +61,7 @@ _REJECTED_REQUEST = LeaveRequest(
 def _ctx(update, *, leave=None, redis=None) -> HandlerContext:
     leave = leave or FakeLeaveEndpoint()
     employees = FakeEmployeesEndpoint()
+    approvals = FakeApprovalsEndpoint()
     r = redis or FakeRedis()
     return HandlerContext(
         update=update,
@@ -65,6 +70,8 @@ def _ctx(update, *, leave=None, redis=None) -> HandlerContext:
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, r),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
 
 
@@ -319,12 +326,15 @@ async def test_full_apply_leave_conversation_via_update_router():
     employees = FakeEmployeesEndpoint()
     redis = FakeRedis()
     bot = FakeBotAPIClient()
+    approvals = FakeApprovalsEndpoint()
     deps = Dependencies(
         bot=bot,
         linking=AccountLinkingService(employees, FakeRedis()),
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, redis),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
 
     await route(FakeTelegramUpdate(text="/apply_leave"), deps, leave_handlers.registry)
@@ -430,7 +440,8 @@ async def test_leave_request_detail_shows_formatted_card():
 async def test_cancel_leave_start_shows_only_cancellable_requests():
     approved = LeaveRequest(
         id="req-3", employee_id="emp-1", leave_type_id="lt-annual", leave_type_name="Annual Leave",
-        start_date="2026-10-01", end_date="2026-10-02", total_days="2.00", reason=None, status="approved",
+        start_date="2026-10-01", end_date="2026-10-02", total_days="2.00", working_days="2.00",
+        reason=None, status="approved",
         approved_by="hr-1", decided_at="2026-09-20T00:00:00Z", decision_comments=None, cancelled_at=None,
         cancellation_reason=None,
     )
@@ -474,7 +485,8 @@ async def test_cancel_leave_selected_shows_confirmation():
 async def test_cancel_leave_confirmed_cancels_and_shows_result():
     cancelled_result = LeaveRequest(
         id="req-1", employee_id="emp-1", leave_type_id="lt-annual", leave_type_name="Annual Leave",
-        start_date="2026-09-01", end_date="2026-09-03", total_days="3.00", reason="Trip", status="cancelled",
+        start_date="2026-09-01", end_date="2026-09-03", total_days="3.00", working_days="3.00",
+        reason="Trip", status="cancelled",
         approved_by=None, decided_at=None, decision_comments=None, cancelled_at="2026-08-01T00:00:00Z",
         cancellation_reason=None,
     )

@@ -15,7 +15,7 @@ All responses use the standard envelope from `shared_kernel/api/response.py`, sa
 { "success": false, "error": { "code": "employee_not_found", "message": "...", "details": null } }
 ```
 
-Every endpoint requires `Authorization: Bearer <access_token>` (see `IDENTITY_API.md` for how to obtain one) and one of two Employee-scoped permissions: `employees.view_employees` (read endpoints) or `employees.manage_employees` (write endpoints, including activate/deactivate). Both are seeded by `apps/employees/migrations/0002_seed_employee_permissions.py` onto the **HR Admin** role (`view` + `manage`) and **Manager** role (`view` only) — see that migration for the full grant list, and `IDENTITY_API.md`'s role-management endpoints for how to grant either role to a user, or a custom role, via Identity's `POST /api/v1/auth/roles/`.
+Every endpoint requires `Authorization: Bearer <access_token>` (see `IDENTITY_API.md` for how to obtain one) and one of two Employee-scoped permissions: `employees.view_employees` (read endpoints) or `employees.manage_employees` (write endpoints, including activate/deactivate). Both were originally seeded by `apps/employees/migrations/0002_seed_employee_permissions.py` onto the **HR Admin** role (`view` + `manage`) and **Manager** role (`view` only); **HR Admin was renamed to Admin, and Manager was removed as a built-in role**, by `apps/identity/migrations/0006_rename_admin_role_and_prune_system_roles.py` (Role & Permission Management phase) — see `IDENTITY_API.md`'s "System roles and permissions" section. `Admin` still holds both grants (the rename preserved them); a `Manager`-equivalent role, or any other, can be recreated and granted these permissions via Identity's `POST /api/v1/auth/roles/`.
 
 ---
 
@@ -64,10 +64,11 @@ Response `201`:
     "job_title": "Software Engineer",
     "employment_type": "full_time",
     "date_of_joining": "2024-01-15",
-    "termination_date": null,
+    "last_working_date": null,
     "status": "active",
     "department_name": "Engineering",
     "manager_name": null,
+    "linked_user_email": null,
     "is_linked_to_telegram": false,
     "telegram_username": null,
     "telegram_linked_at": null
@@ -75,7 +76,11 @@ Response `201`:
 }
 ```
 
-`department_name`/`manager_name` (Phase 7) are resolved for single-record reads only — create, update, `GET .../{id}/`, and `GET .../me/`. List/search responses (below) leave both `null` unconditionally, to avoid an N+1 lookup cost per row; see `application/services/employee_query_service.py`'s docstring.
+`manager_name` (Phase 7) is resolved for single-record reads only — create, update, `GET .../{id}/`, and `GET .../me/`. List/search responses (below) leave it `null` unconditionally, to avoid an N+1 lookup cost per row (`manager_id` is a self-referential FK with no cheap batch lookup); see `application/services/employee_query_service.py`'s docstring.
+
+`department_name` is resolved on **every** read, including list/search (bugfix: the Employee List table's Department column previously showed "—" for every row, because this field used to follow the same single-record-only rule as `manager_name` above). List/search responses resolve it via one batched `DepartmentRepository.get_by_ids()` call per page — one query for every distinct department on that page, not one query per employee row — so this stays free of the N+1 cost `manager_name` avoids by skipping resolution outright.
+
+`linked_user_email` (Phase 12 bugfix) is the email of the Identity `User` this employee's `user_id` points to, resolved the same way and on the same single-record-only reads as `manager_name` — `null` if `user_id` is `null`, and also `null` on list/search rows regardless of `user_id`. Backs the Employee Details screen's "linked user account" indicator.
 
 `is_linked_to_telegram`/`telegram_username`/`telegram_linked_at` (Employee & Telegram Authentication refactor) are always present on every `EmployeeResponse`, list/search included — see "Telegram linking" below for how they get set.
 
@@ -89,7 +94,7 @@ Errors: `404 employee_not_found`.
 ### `PATCH /api/v1/employees/{id}/`
 Requires `employees.manage_employees`. **Full-replace update**, despite the PATCH verb — every field in the request body is required, this is not field-level partial patching (see `interface/serializers.py:UpdateEmployeeSerializer`'s docstring for why that was kept out of this phase's scope). Does not change `status` — use activate/deactivate for that.
 
-Request: same shape as create, minus `user_id`, plus optional `termination_date`.
+Request: same shape as create, minus `user_id`, plus optional `last_working_date`.
 
 Response `200`: updated employee, same shape as create's `data`.
 
@@ -98,13 +103,25 @@ Errors: `404 employee_not_found`, `404 department_not_found`, `409 duplicate_wor
 ### `GET /api/v1/employees/me/`
 Requires only authentication (a JWT) — **not** `employees.view_employees`. Self-service for an HR System **User** who happens to also have an `Employee` record linked via `user_id`: returns that linked employee record (`department_name`/`manager_name` resolved, same as a single `GET .../{id}/`).
 
-Deliberately a narrower grant than the general detail endpoint: `employees.view_employees` gates viewing *anyone's* record (HR Admin/Manager territory), which is a strictly bigger permission than "see your own profile" — the same reasoning `IDENTITY_API.md`'s `GET /api/v1/auth/me/` already established for `User` data, extended here to `Employee` data.
+Deliberately a narrower grant than the general detail endpoint: `employees.view_employees` gates viewing *anyone's* record (Admin, or any custom role granted it, territory), which is a strictly bigger permission than "see your own profile" — the same reasoning `IDENTITY_API.md`'s `GET /api/v1/auth/me/` already established for `User` data, extended here to `Employee` data.
 
 **This is not the endpoint the Telegram Gateway calls.** Telegram-linked employees never have a `User` account or a JWT at all (Employee & Telegram Authentication refactor) — the Gateway's equivalent is `GET /telegram/profile/`, below, authenticated differently and keyed by `telegram_user_id` instead of a bearer token. The two self-service paths are deliberately separate: this one for HR Users who are also employees, that one for Telegram-only employees.
 
 Response `200`: same shape as create's `data`.
 
 Errors: `404 employee_not_found` (the caller's `User` isn't linked to any employee record).
+
+### `POST /api/v1/employees/{id}/link-user/`
+Requires `employees.manage_employees` (Phase 12, User Management). Links an existing employee record to an existing `User` account, by id. The only other way to set `user_id` is at creation time (above) — this closes the gap for an employee record that already exists without login access.
+
+Request:
+```json
+{ "user_id": "018f..." }
+```
+
+Response `200`: the updated employee, same shape as create's `data` (`user_id` now set).
+
+Errors: `404 employee_not_found`, `404 user_not_found` (the given `user_id` doesn't exist in Identity — validated via a cross-module port, see the architecture notes below), `409 user_already_linked` (this `user_id` is already linked to a *different* employee — relinking the same employee to the same user again is a no-op, not a conflict).
 
 ---
 
@@ -189,6 +206,81 @@ Requires `employees.view_employees`. Same endpoint mechanism as list — matches
 
 ---
 
+## Department CRUD (Phase 12)
+
+Departments are part of the Employee bounded context, not a separate module or permission scope — every endpoint below reuses `employees.view_employees`/`employees.manage_employees`, the same codes Employee CRUD uses. No delete endpoint: same "deactivate, don't hard-delete" precedent Employee already established (`is_active` toggle only), doubly so here since `parent_department_id` and `Employee.department_id` are both RESTRICT-constrained foreign keys — a real delete on a referenced department would fail at the database level regardless.
+
+### `POST /api/v1/employees/departments/`
+Requires `employees.manage_employees`.
+
+Request:
+```json
+{
+  "name": "Quality Assurance",
+  "code": "QA",
+  "parent_department_id": null,
+  "head_employee_id": null
+}
+```
+
+Response `201`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "018f...",
+    "name": "Quality Assurance",
+    "code": "QA",
+    "parent_department_id": null,
+    "head_employee_id": null,
+    "is_active": true,
+    "parent_department_name": null,
+    "head_employee_name": null
+  }
+}
+```
+
+Errors: `409 duplicate_department_code`, `422 invalid_department_parent` (parent_department_id equals this department's own id — only possible on update, never on create, since the id doesn't exist yet), `404 department_not_found` (parent_department_id doesn't exist), `404 employee_not_found` (head_employee_id doesn't exist), `403 insufficient_permission`.
+
+### `GET /api/v1/employees/departments/{id}/`
+Requires `employees.view_employees`. `parent_department_name`/`head_employee_name` are resolved for this single-record read (`null` if there's no parent/head, or if either was deleted out from under a stale reference).
+
+Errors: `404 department_not_found`.
+
+### `PATCH /api/v1/employees/departments/{id}/`
+Requires `employees.manage_employees`. Full-replace update, same convention as Employee's PATCH — every field required, including `is_active` (this is how a department is reactivated after being deactivated).
+
+Request:
+```json
+{
+  "name": "Quality Assurance",
+  "code": "QA",
+  "parent_department_id": null,
+  "head_employee_id": "018f...",
+  "is_active": true
+}
+```
+
+Response `200`: updated department, same shape as create's `data`.
+
+Errors: `404 department_not_found`, `404 employee_not_found`, `409 duplicate_department_code`, `422 invalid_department_parent`.
+
+### `GET /api/v1/employees/departments/`
+Requires `employees.view_employees`. Query parameters:
+
+| Param | Meaning |
+|---|---|
+| `is_active` | exact-match filter (`true`\|`false`) |
+| `search` / `q` | case-insensitive match against `name` or `code` |
+| `ordering` | comma-separated field names. Defaults to `name`. |
+| `page`, `page_size` | pagination (`page_size` capped at 100) |
+
+Response `200`: `data` is a list of departments. `parent_department_name`/`head_employee_name` are **not** resolved on list rows (always `null`) — same N+1-avoidance reasoning as Employee's `department_name`/`manager_name` on its own list endpoint; fetch `GET .../departments/{id}/` for the enriched single-record view.
+
+Departments `GEN`, `ENG`, `HR` are seeded automatically by migration `0003_seed_departments` — useful as `department_id`/`parent_department_id` values without creating one first.
+
+---
+
 ## Status transitions
 
 ### `POST /api/v1/employees/{id}/activate/`
@@ -210,13 +302,16 @@ Errors: `404 employee_not_found`, `409 invalid_employee_status_transition`.
 | HTTP | code | Meaning |
 |---|---|---|
 | 404 | `employee_not_found` | — |
-| 404 | `department_not_found` | Given `department_id` doesn't exist |
+| 404 | `department_not_found` | Given `department_id`/`parent_department_id` doesn't exist |
+| 404 | `user_not_found` | Given `user_id` (link-user endpoint) doesn't exist in Identity |
 | 409 | `duplicate_work_email` | Another employee already has this work email |
 | 409 | `user_already_linked` | Given `user_id` is already linked to a different employee |
+| 409 | `duplicate_department_code` | Another department already has this code |
+| 422 | `invalid_department_parent` | A department was given itself as its own parent |
 | 409 | `invalid_employee_status_transition` | e.g. activating a terminated employee |
 | 403 | `insufficient_permission` | Caller lacks `employees.view_employees`/`employees.manage_employees` |
 | 403 | (no code — DRF `PermissionDenied`) | Missing/wrong `X-Internal-Service-Key` on a Telegram-linking endpoint |
-| 422 | `validation_error` | Request failed a business rule (e.g. `termination_date` before `date_of_joining`) |
+| 422 | `validation_error` | Request failed a business rule (e.g. `last_working_date` before `date_of_joining`) |
 | 409 | `duplicate_telegram_link` | This Telegram account is already linked to a different employee |
 | 409 | `employee_already_linked_to_telegram` | This employee is already linked to a *different* Telegram account — send `/unlink` from that account first |
 | 404 | `employee_not_linked_to_telegram` | No employee currently has this `telegram_user_id` linked |
@@ -231,10 +326,16 @@ Errors: `404 employee_not_found`, `409 invalid_employee_status_transition`.
 
 ## Architecture notes relevant to consumers of this API
 
-**Employee and User remain separate, exactly as `IDENTITY_API.md` described before this module existed.** `user_id` is `null` for any employee without login access, and is never required at creation. Linking happens by passing an existing `identity.users.id` as `user_id` when creating (or, in a future phase, via a dedicated link endpoint) — there is no endpoint here that creates a `User` as a side effect, and none in Identity that creates an `Employee` as a side effect.
+**Employee and User remain separate, exactly as `IDENTITY_API.md` described before this module existed.** `user_id` is `null` for any employee without login access, and is never required at creation. Linking happens by passing an existing `identity.users.id` as `user_id` when creating, or afterwards via `POST /api/v1/employees/{id}/link-user/` (Phase 12) — there is no endpoint here that creates a `User` as a side effect, and none in Identity that creates an `Employee` as a side effect.
+
+**The link-user endpoint validates `user_id` without importing Identity's models.** `apps.employees` depends on Identity only through `UserLookupPort`/`UserServiceLookupAdapter` (`apps/employees/infrastructure/user_lookup_adapter.py`), which calls Identity's own composed use case (`apps.identity.interface.dependencies.build_get_user_by_id_use_case()`) — the same cross-module dependency-inversion pattern already used the other direction by `apps.leave`'s `EmployeeLookupPort` to check employee ids without importing Employee's ORM models. Neither module ever imports another module's models or repositories directly; only its already-composed public service, via that module's own `interface/dependencies.py`.
+
+**Department CRUD follows Employee's own precedent almost exactly** — a `BaseService`-driven command service, a hand-written query service that resolves enrichment fields only on single-record reads, and a thin facade the ViewSet depends on, all for the identical reason: `BaseViewSet`'s generic `list()`/`retrieve()` need an *enriched* response DTO back, not a raw domain entity.
 
 **`employee_code` is never client-supplied.** It's generated from a real Postgres sequence at creation time (`EMP-000001`, `EMP-000002`, ...) — race-safe under concurrent creates, unlike a row-count-based scheme.
 
 **Soft delete, not hard delete.** Employee records use `shared_kernel`'s `SoftDeleteModel` — there is no delete endpoint in this phase; deactivation (`SUSPENDED`) is the supported way to take an employee out of active circulation without destroying history.
 
 **Future modules (Leave, Attendance, Payroll, Documents, Assets, ...) will reference `employee_id` as a plain UUID**, the same cross-module-reference pattern already established between Identity and Employee — none of them require a change to this module to do so.
+
+**Employee-to-User linking now syncs both directions (Phase 12 bugfix).** `Employee.user_id` and `identity.User.employee_id` are two independent, non-foreign-key fields (see `IDENTITY_API.md`'s architecture notes) — this module owns the write (`user_id` set at creation or via `link-user/`), and publishes `EmployeeCreated` (carrying `user_id` when set at creation) or `EmployeeLinkedToUser` (published by `link-user/`) so `apps.identity` can keep its own `employee_id` field in sync. Before this fix, nothing populated Identity's side at all, so `GET /auth/me/` and `GET /auth/users/...` always showed `employee_id: null` even for an employee visibly linked via `user_id` here. Links made before the fix shipped needed a one-time `python manage.py backfill_user_employee_links` to catch up (see that command's docstring); every link made from now on syncs automatically.

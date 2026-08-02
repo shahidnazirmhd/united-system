@@ -108,3 +108,17 @@ def test_employee_not_linked_prompts_to_link():
 def test_duplicate_telegram_link_prompts_to_unlink_first():
     error = HRMSAPIError(status_code=409, code="duplicate_telegram_link", message="Already linked.")
     assert "/unlink" in friendly_message_for(error)
+
+
+def test_employee_not_eligible_for_leave_has_a_specific_friendly_message():
+    # Round 16 item 1 bugfix — this code was missing from _FRIENDLY_MESSAGES
+    # entirely, so an ineligible employee applying for leave saw the
+    # generic "Something went wrong" text instead of an explanation.
+    error = HRMSAPIError(
+        status_code=422,
+        code="employee_not_eligible_for_leave",
+        message="This employee's current status does not permit applying for leave right now.",
+    )
+    friendly = friendly_message_for(error)
+    assert friendly != "Something went wrong on our end. Please try again in a moment."
+    assert "status" in friendly.lower()

@@ -38,7 +38,6 @@ class User(Entity):
     email: Email
     password_hash: str
     is_active: bool = True
-    is_system_account: bool = False
     employee_id: uuid.UUID | None = None
     last_login_at: datetime | None = None
     # Any token issued before this timestamp is treated as invalid, even if
@@ -67,6 +66,67 @@ class User(Entity):
 
     def has_permission(self, permission_code: str) -> bool:
         return permission_code in self.permission_codes
+
+    def activate(self) -> "User":
+        """No transition restrictions (unlike Employee's status machine) —
+        a User is simply active or not. Deactivation already takes effect
+        immediately with no extra token-revocation step needed: `is_active`
+        is checked fresh on every authenticated request (see
+        IDENTITY_API.md's architecture notes), so re-activating just as
+        immediately restores access."""
+        return self._with_active(True)
+
+    def deactivate(self) -> "User":
+        return self._with_active(False)
+
+    def with_profile(self, *, email: Email) -> "User":
+        """Phase 12 admin edit (UpdateUserUseCase) — deliberately excludes
+        password_hash (the reset-password flow's job, not edit's) and roles
+        (already has its own assign/revoke endpoints), matching Employee's
+        UpdateEmployeeSerializer keeping status/telegram fields out of its
+        own full-replace update for the identical reason."""
+        return User(
+            id=self.id,
+            email=email,
+            password_hash=self.password_hash,
+            is_active=self.is_active,
+            employee_id=self.employee_id,
+            last_login_at=self.last_login_at,
+            password_changed_at=self.password_changed_at,
+            roles=self.roles,
+        )
+
+    def with_employee(self, *, employee_id: uuid.UUID) -> "User":
+        """Phase 12 bugfix: the reciprocal half of `Employee.user_id`.
+        Called only from `interface/event_handlers.py`'s subscribers to
+        `apps.employees`'s `EmployeeCreated`/`EmployeeLinkedToUser` events —
+        never from a directly-callable endpoint, since Employee owns the
+        decision of *which* employee links to a user; Identity only ever
+        records the fact once told. See this module's own `__init__.py`
+        docstring for why these are two independent, non-FK fields kept in
+        sync via events rather than one owning the other."""
+        return User(
+            id=self.id,
+            email=self.email,
+            password_hash=self.password_hash,
+            is_active=self.is_active,
+            employee_id=employee_id,
+            last_login_at=self.last_login_at,
+            password_changed_at=self.password_changed_at,
+            roles=self.roles,
+        )
+
+    def _with_active(self, is_active: bool) -> "User":
+        return User(
+            id=self.id,
+            email=self.email,
+            password_hash=self.password_hash,
+            is_active=is_active,
+            employee_id=self.employee_id,
+            last_login_at=self.last_login_at,
+            password_changed_at=self.password_changed_at,
+            roles=self.roles,
+        )
 
 
 # TelegramAccount/TelegramLinkToken (Phase 7) removed — Telegram linking is

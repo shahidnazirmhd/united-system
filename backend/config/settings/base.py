@@ -249,6 +249,24 @@ INTERNAL_SERVICE_API_KEY = env("INTERNAL_SERVICE_API_KEY", default="")
 LEAVE_ALLOW_PAST_START_DATE = env.bool("LEAVE_ALLOW_PAST_START_DATE", default=False)
 
 # --------------------------------------------------------------------------
+# Approval Engine (Phase 9)
+#
+# The backend->Gateway call direction is new as of this module: every prior
+# integration was Gateway->backend only (the Gateway is a first-party HTTP
+# client of this API). Sending an unsolicited Telegram notification the
+# moment an approval request needs a decision requires the reverse — a
+# Celery task (apps/approvals/infrastructure/tasks.py) calls the Gateway's
+# own `POST /internal/notify`, authenticated with the exact same
+# INTERNAL_SERVICE_API_KEY defined above (the same static shared secret
+# already proves "this caller is trusted" in the other direction; reusing
+# it here rather than minting a second secret keeps exactly one credential
+# to rotate). Left with no default for the same "fail loud, not open"
+# reasoning INTERNAL_SERVICE_API_KEY documents above.
+# --------------------------------------------------------------------------
+TELEGRAM_GATEWAY_BASE_URL = env("TELEGRAM_GATEWAY_BASE_URL", default="")
+TELEGRAM_GATEWAY_NOTIFY_TIMEOUT_SECONDS = env.int("TELEGRAM_GATEWAY_NOTIFY_TIMEOUT_SECONDS", default=10)
+
+# --------------------------------------------------------------------------
 # Django REST Framework
 # --------------------------------------------------------------------------
 REST_FRAMEWORK = {

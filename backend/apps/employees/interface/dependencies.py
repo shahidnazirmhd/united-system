@@ -15,6 +15,9 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 from apps.employees.application.ports import EmployeeOTPEmailPort
+from apps.employees.application.services.department_command_service import DepartmentCommandService
+from apps.employees.application.services.department_query_service import DepartmentQueryService
+from apps.employees.application.services.department_service import DepartmentService
 from apps.employees.application.services.employee_command_service import EmployeeCommandService
 from apps.employees.application.services.employee_query_service import EmployeeQueryService
 from apps.employees.application.services.employee_service import EmployeeService
@@ -27,6 +30,7 @@ from apps.employees.infrastructure.repositories import (
     DjangoEmployeeLinkTokenRepository,
     DjangoEmployeeRepository,
 )
+from apps.employees.infrastructure.user_lookup_adapter import UserServiceLookupAdapter
 from shared_kernel.infrastructure.django_unit_of_work import DjangoUnitOfWork
 from shared_kernel.infrastructure.event_bus_impl import event_bus
 from shared_kernel.infrastructure.email_client import EmailClientPort, LoggingEmailClient, SmtpEmailClient
@@ -38,6 +42,7 @@ def build_employee_command_service() -> EmployeeCommandService:
         department_repository=DjangoDepartmentRepository(),
         unit_of_work=DjangoUnitOfWork(),
         event_bus=event_bus,
+        user_lookup=UserServiceLookupAdapter(),
     )
 
 
@@ -45,6 +50,7 @@ def build_employee_query_service() -> EmployeeQueryService:
     return EmployeeQueryService(
         employee_repository=DjangoEmployeeRepository(),
         department_repository=DjangoDepartmentRepository(),
+        user_lookup=UserServiceLookupAdapter(),
     )
 
 
@@ -52,6 +58,28 @@ def build_employee_service() -> EmployeeService:
     return EmployeeService(
         command_service=build_employee_command_service(),
         query_service=build_employee_query_service(),
+    )
+
+
+def build_department_command_service() -> DepartmentCommandService:
+    return DepartmentCommandService(
+        department_repository=DjangoDepartmentRepository(),
+        employee_repository=DjangoEmployeeRepository(),
+        unit_of_work=DjangoUnitOfWork(),
+    )
+
+
+def build_department_query_service() -> DepartmentQueryService:
+    return DepartmentQueryService(
+        department_repository=DjangoDepartmentRepository(),
+        employee_repository=DjangoEmployeeRepository(),
+    )
+
+
+def build_department_service() -> DepartmentService:
+    return DepartmentService(
+        command_service=build_department_command_service(),
+        query_service=build_department_query_service(),
     )
 
 

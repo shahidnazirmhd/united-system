@@ -23,7 +23,8 @@ from tests.fakes import FakeLeaveEndpoint, FakeRedis, make_hrms_error
 
 _APPLIED_REQUEST = LeaveRequest(
     id="req-1", employee_id="emp-1", leave_type_id="lt-1", leave_type_name="Annual Leave",
-    start_date="2026-09-01", end_date="2026-09-03", total_days="3.00", reason=None, status="pending",
+    start_date="2026-09-01", end_date="2026-09-03", total_days="3.00", working_days="3.00",
+    reason=None, status="pending",
     approved_by=None, decided_at=None, decision_comments=None, cancelled_at=None, cancellation_reason=None,
 )
 

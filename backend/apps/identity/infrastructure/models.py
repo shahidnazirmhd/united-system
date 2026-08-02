@@ -32,7 +32,6 @@ class UserRecord(BaseModel):
     # employee, and an employee has at most one linked user account.
     employee_id = models.UUIDField(null=True, blank=True, unique=True)
     is_active = models.BooleanField(default=True)
-    is_system_account = models.BooleanField(default=False)
     last_login_at = models.DateTimeField(null=True, blank=True)
     password_changed_at = models.DateTimeField(auto_now_add=True)
     roles = models.ManyToManyField(

@@ -127,9 +127,18 @@ class EmployeeTelegramLinkingService:
         if employee is None:
             raise EmployeeNotFoundError()
 
-        if employee.status == EmployeeStatus.TERMINATED:
+        # Round 14 item 7: broadened from "TERMINATED only" to "must be
+        # ACTIVE or ON_LEAVE" — a deactivated (SUSPENDED) employee must not
+        # be able to request an OTP either, matching
+        # Employee.link_telegram()'s identical, broadened guard (checked
+        # again there at verify_link time, in case status changed in
+        # between — defense in depth, not duplication to be reconciled
+        # away). Kept here too so an OTP is never even generated/sent for
+        # an employee who will fail at verify_link anyway.
+        if employee.status not in (EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE):
             raise EmployeeNotActiveError(
-                f"Cannot link Telegram for a terminated employee ({employee.employee_code})."
+                "Your employee account is currently deactivated, so Telegram cannot be linked. "
+                "Please contact HR to reactivate your account first."
             )
 
         # This employee already has a *different* Telegram account linked —

@@ -31,6 +31,8 @@ from apps.identity.infrastructure.models import (
     UserRecord,
     UserRoleRecord,
 )
+from django.db.models import Q
+from shared_kernel.domain.repository import PageResult, QueryParams
 
 
 def _role_to_domain(role_record: RoleRecord) -> Role:
@@ -49,7 +51,6 @@ def _user_to_domain(user_record: UserRecord) -> User:
         email=Email(user_record.email),
         password_hash=user_record.password_hash,
         is_active=user_record.is_active,
-        is_system_account=user_record.is_system_account,
         employee_id=user_record.employee_id,
         last_login_at=user_record.last_login_at,
         password_changed_at=user_record.password_changed_at,
@@ -66,6 +67,14 @@ class DjangoUserRepository(UserRepository):
         )
         return _user_to_domain(record) if record else None
 
+    def get_by_employee_id(self, employee_id: uuid.UUID) -> User | None:
+        record = (
+            UserRecord.objects.prefetch_related("roles__permissions")
+            .filter(employee_id=employee_id)
+            .first()
+        )
+        return _user_to_domain(record) if record else None
+
     def get_by_email(self, email: Email) -> User | None:
         record = (
             UserRecord.objects.prefetch_related("roles__permissions")
@@ -74,6 +83,34 @@ class DjangoUserRepository(UserRepository):
         )
         return _user_to_domain(record) if record else None
 
+    def list(self, query: QueryParams) -> PageResult[User]:
+        # Hand-written rather than delegating to DjangoBaseRepository (which
+        # Identity's repositories don't extend — see this class's module
+        # docstring): the logic is identical to that generic implementation,
+        # just with the same `prefetch_related` every other read method here
+        # already needs so `_user_to_domain` doesn't N+1 on roles/permissions.
+        queryset = UserRecord.objects.prefetch_related("roles__permissions").all()
+
+        if query.filters:
+            queryset = queryset.filter(**query.filters)
+
+        if query.search and query.search_fields:
+            search_condition = Q()
+            for field_name in query.search_fields:
+                search_condition |= Q(**{f"{field_name}__icontains": query.search})
+            queryset = queryset.filter(search_condition)
+
+        total_count = queryset.count()
+
+        if query.ordering:
+            queryset = queryset.order_by(*query.ordering)
+
+        start = (query.page - 1) * query.page_size
+        end = start + query.page_size
+        items = [_user_to_domain(record) for record in queryset[start:end]]
+
+        return PageResult(items=items, total_count=total_count, page=query.page, page_size=query.page_size)
+
     def save(self, user: User) -> User:
         record, _ = UserRecord.objects.update_or_create(
             id=user.id,
@@ -81,7 +118,6 @@ class DjangoUserRepository(UserRepository):
                 "email": str(user.email),
                 "password_hash": user.password_hash,
                 "is_active": user.is_active,
-                "is_system_account": user.is_system_account,
                 "employee_id": user.employee_id,
                 "last_login_at": user.last_login_at,
                 "password_changed_at": user.password_changed_at,
@@ -138,6 +174,29 @@ class DjangoRoleRepository(RoleRepository):
             )
         record = RoleRecord.objects.prefetch_related("permissions").get(id=record.id)
         return _role_to_domain(record)
+
+    def update(self, role: Role, permission_codes: frozenset[str]) -> Role:
+        record, _ = RoleRecord.objects.update_or_create(
+            id=role.id,
+            defaults={"name": role.name, "description": role.description},
+        )
+        # Full replace, not additive like save(): clear every existing grant
+        # first, then re-add exactly the target set — see RoleRepository.update's
+        # docstring on why this differs from save()'s bulk_create-only approach.
+        RolePermissionRecord.objects.filter(role=record).delete()
+        if permission_codes:
+            permission_records = PermissionRecord.objects.filter(code__in=permission_codes)
+            RolePermissionRecord.objects.bulk_create(
+                [RolePermissionRecord(role=record, permission=p) for p in permission_records]
+            )
+        record = RoleRecord.objects.prefetch_related("permissions").get(id=record.id)
+        return _role_to_domain(record)
+
+    def delete(self, role_id: uuid.UUID) -> None:
+        RoleRecord.objects.filter(id=role_id).delete()
+
+    def is_assigned_to_any_user(self, role_id: uuid.UUID) -> bool:
+        return UserRoleRecord.objects.filter(role_id=role_id).exists()
 
     def exists_with_name(self, name: str) -> bool:
         return RoleRecord.objects.filter(name=name).exists()

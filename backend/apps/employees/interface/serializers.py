@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.employees.domain.enums import EmployeeStatus, EmploymentType
+from apps.employees.domain.enums import EmployeeCurrentStatus, EmployeeStatus, EmploymentType
 from shared_kernel.api.fields import OptionalDateField, OptionalUUIDField
 
 
@@ -51,7 +51,46 @@ class UpdateEmployeeSerializer(serializers.Serializer):
     job_title = serializers.CharField(max_length=150)
     employment_type = serializers.ChoiceField(choices=EmploymentType.values())
     date_of_joining = serializers.DateField()
-    termination_date = OptionalDateField(required=False, allow_null=True, default=None)
+    # Round 15 item 9 — renamed from termination_date; used for both
+    # resignation and termination.
+    last_working_date = OptionalDateField(required=False, allow_null=True, default=None)
+
+
+class LinkUserToEmployeeSerializer(serializers.Serializer):
+    """Phase 12 (User Management): body for POST /employees/{id}/link-user/."""
+
+    user_id = serializers.UUIDField()
+
+
+# --- Department CRUD (Phase 12) --------------------------------------------
+
+
+class CreateDepartmentSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    code = serializers.CharField(max_length=20)
+    parent_department_id = OptionalUUIDField(required=False, allow_null=True, default=None)
+    head_employee_id = OptionalUUIDField(required=False, allow_null=True, default=None)
+
+
+class UpdateDepartmentSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    code = serializers.CharField(max_length=20)
+    parent_department_id = OptionalUUIDField(required=False, allow_null=True, default=None)
+    head_employee_id = OptionalUUIDField(required=False, allow_null=True, default=None)
+    is_active = serializers.BooleanField(default=True)
+
+
+class DepartmentResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    code = serializers.CharField()
+    parent_department_id = serializers.UUIDField(allow_null=True)
+    head_employee_id = serializers.UUIDField(allow_null=True)
+    is_active = serializers.BooleanField()
+    # Resolved on single-record reads only (get) — null on list. See
+    # DepartmentQueryService's docstring.
+    parent_department_name = serializers.CharField(allow_null=True)
+    head_employee_name = serializers.CharField(allow_null=True)
 
 
 class EmployeeResponseSerializer(serializers.Serializer):
@@ -71,15 +110,40 @@ class EmployeeResponseSerializer(serializers.Serializer):
     job_title = serializers.CharField()
     employment_type = serializers.ChoiceField(choices=EmploymentType.values())
     date_of_joining = serializers.DateField()
-    termination_date = serializers.DateField(allow_null=True)
+    last_working_date = serializers.DateField(allow_null=True)  # round 15 item 9
     status = serializers.ChoiceField(choices=EmployeeStatus.values())
     # Resolved on single-record reads only (get, me) — null on list/search.
     # See EmployeeQueryService's docstring.
     department_name = serializers.CharField(allow_null=True)
     manager_name = serializers.CharField(allow_null=True)
+    # Phase 12 bugfix: the linked User's email, resolved the same way/same
+    # scope as department_name/manager_name above.
+    linked_user_email = serializers.CharField(allow_null=True)
     is_linked_to_telegram = serializers.BooleanField()
     telegram_username = serializers.CharField(allow_null=True)
     telegram_linked_at = serializers.DateTimeField(allow_null=True)
+    # Round 14 item 8 — see domain/enums.py EmployeeCurrentStatus's
+    # docstring for why this is separate from `status` above.
+    current_status = serializers.ChoiceField(choices=EmployeeCurrentStatus.values())
+    status_before_leave = serializers.ChoiceField(choices=EmployeeCurrentStatus.values(), allow_null=True)
+    is_eligible_for_leave = serializers.BooleanField()
+
+
+class UpdateEmployeeCurrentStatusSerializer(serializers.Serializer):
+    """Round 14 item 8 — body for POST /employees/{id}/current-status/.
+    Deliberately excludes SICK_LEAVE/ANNUAL_LEAVE from the choice list
+    presented here — see `Employee.update_current_status_manually`'s
+    docstring for why those two can never be chosen manually; the service
+    layer still enforces this even if a client sends one anyway."""
+
+    current_status = serializers.ChoiceField(
+        choices=[
+            (EmployeeCurrentStatus.NOT_JOINED.value, "Not Joined"),
+            (EmployeeCurrentStatus.WORKING.value, "Working"),
+            (EmployeeCurrentStatus.TERMINATED.value, "Terminated"),
+            (EmployeeCurrentStatus.RESIGNED.value, "Resigned"),
+        ]
+    )
 
 
 # --- Telegram linking (Employee & Telegram Authentication refactor) ------

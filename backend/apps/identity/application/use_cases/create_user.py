@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import uuid
 
-from apps.identity.application.dtos import CreateUserRequest, RoleSummary, UserSummaryResponse
+from apps.identity.application.dtos import CreateUserRequest, UserSummaryResponse
+from apps.identity.application.mappers import user_to_summary_response
 from apps.identity.application.ports import PasswordHasherPort
 from apps.identity.domain.entities import User
 from apps.identity.domain.exceptions import DuplicateEmailError
@@ -41,18 +42,9 @@ class CreateUserUseCase(UseCase[CreateUserRequest, UserSummaryResponse]):
             id=generate_uuid7(),
             email=email,
             password_hash=self._hasher.hash(request.password),
-            is_system_account=request.is_system_account,
         )
 
         with self._uow:
             saved = self._users.save(user)
 
-        return UserSummaryResponse(
-            id=saved.id,
-            email=str(saved.email),
-            is_active=saved.is_active,
-            is_system_account=saved.is_system_account,
-            employee_id=saved.employee_id,
-            roles=tuple(RoleSummary(id=r.id, name=r.name) for r in saved.roles),
-            permission_codes=saved.permission_codes,
-        )
+        return user_to_summary_response(saved)

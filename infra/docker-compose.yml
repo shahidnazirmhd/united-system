@@ -58,7 +58,14 @@ services:
       context: ../backend
       dockerfile: ../infra/docker/backend.Dockerfile
       target: local
-    command: celery -A config worker --loglevel=info -Q default
+    # -Q lists every queue this single worker process consumes from. Phase 9
+    # adds `approvals` (apps.approvals.infrastructure.tasks's notification
+    # task, routed there by config/celery.py's task_routes) alongside the
+    # pre-existing `default` queue; round 14 adds `leave` (the daily Employee
+    # Current Status reconciliation task) — a task routed to a queue no
+    # worker is listening on would simply sit in Redis forever, never
+    # executed.
+    command: celery -A config worker --loglevel=info -Q default,approvals,leave
     env_file:
       - ../.env
     environment:

@@ -58,7 +58,6 @@ class ConfirmPasswordResetUseCase(UseCase[ConfirmPasswordResetRequest, None]):
             email=user.email,
             password_hash=self._hasher.hash(request.new_password),
             is_active=user.is_active,
-            is_system_account=user.is_system_account,
             employee_id=user.employee_id,
             last_login_at=user.last_login_at,
             password_changed_at=now,

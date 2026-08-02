@@ -7,6 +7,8 @@ views." Role management endpoints live in role_views.py.
 """
 from __future__ import annotations
 
+import uuid
+
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -20,6 +22,8 @@ from apps.identity.application.dtos import (
     LogoutRequest,
     RefreshRequest,
     RequestPasswordResetRequest,
+    UpdateUserRequest,
+    UserListQuery,
 )
 from apps.identity.interface import dependencies
 from apps.identity.interface.permissions import HasPermission
@@ -31,9 +35,11 @@ from apps.identity.interface.serializers import (
     RefreshSerializer,
     RequestPasswordResetSerializer,
     TokenPairResponseSerializer,
+    UpdateUserSerializer,
     UserSummarySerializer,
 )
-from shared_kernel.api.response import success_response
+from shared_kernel.api.query_params import parse_list_query_params
+from shared_kernel.api.response import paginated_response, success_response
 
 
 class LoginView(APIView):
@@ -174,15 +180,50 @@ class ConfirmPasswordResetView(APIView):
         return success_response({"detail": "Password changed successfully."})
 
 
-class UserCreateView(APIView):
-    """POST /api/v1/auth/users/ — provisions a new authentication account.
+class UserListCreateView(APIView):
+    """GET /api/v1/auth/users/ — lists users (Phase 12, User Management).
+    POST /api/v1/auth/users/ — provisions a new authentication account.
 
-    Admin-only (identity.manage_users) — not public self-service signup.
-    See this module's architecture notes on why User accounts are
-    provisioned independently of the (not-yet-built) Employee module.
+    Admin-only (identity.manage_users for create, identity.view_users for
+    list) — creation is not public self-service signup. See this module's
+    architecture notes on why User and Employee are provisioned
+    independently.
     """
 
-    permission_classes = [HasPermission("identity.manage_users")]
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [HasPermission("identity.manage_users")]
+        return [HasPermission("identity.view_users")]
+
+    @extend_schema(
+        summary="List users",
+        description="Requires identity.view_users. Query params: is_active "
+        "(exact-match filter), search/q (matches email), ordering, page, page_size.",
+        responses={200: UserSummarySerializer(many=True)},
+    )
+    def get(self, request: Request) -> Response:
+        query = parse_list_query_params(
+            request,
+            filter_fields=("is_active",),
+            search_fields=("email",),
+            default_ordering=("email",),
+        )
+
+        def _as_bool(value: object) -> bool | None:
+            if value is None:
+                return None
+            return str(value).lower() in ("1", "true", "yes")
+
+        page_result = dependencies.build_list_users_use_case().execute(
+            UserListQuery(
+                is_active=_as_bool(query.filters.get("is_active")),
+                search=query.search,
+                ordering=query.ordering,
+                page=query.page,
+                page_size=query.page_size,
+            )
+        )
+        return paginated_response(page_result, UserSummarySerializer(page_result.items, many=True).data)
 
     @extend_schema(
         summary="Create a user account",
@@ -198,11 +239,89 @@ class UserCreateView(APIView):
             CreateUserRequest(
                 email=serializer.validated_data["email"],
                 password=serializer.validated_data["password"],
-                is_system_account=serializer.validated_data["is_system_account"],
                 created_by=request.user.user_id,
             )
         )
         return success_response(UserSummarySerializer(result).data, status_code=201)
+
+
+class UserDetailView(APIView):
+    """GET /api/v1/auth/users/{user_id}/ — any user's profile (admin-gated,
+    unlike GET /api/v1/auth/me/ which needs no permission at all).
+    PATCH /api/v1/auth/users/{user_id}/ — edits email.
+    """
+
+    def get_permissions(self):
+        if self.request.method == "PATCH":
+            return [HasPermission("identity.manage_users")]
+        return [HasPermission("identity.view_users")]
+
+    @extend_schema(
+        summary="Get a user by id",
+        description="Requires identity.view_users.",
+        responses={200: UserSummarySerializer},
+    )
+    def get(self, request: Request, user_id: uuid.UUID) -> Response:
+        result = dependencies.build_get_user_by_id_use_case().execute(user_id)
+        return success_response(UserSummarySerializer(result).data)
+
+    @extend_schema(
+        summary="Edit a user",
+        description="Full-replace update of email. Requires "
+        "identity.manage_users. Does not change password (see password-reset "
+        "endpoints) or roles (see the role-assignment endpoints) or is_active "
+        "(see activate/deactivate).",
+        request=UpdateUserSerializer,
+        responses={200: UserSummarySerializer},
+    )
+    def patch(self, request: Request, user_id: uuid.UUID) -> Response:
+        serializer = UpdateUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result = dependencies.build_update_user_use_case().execute(
+            UpdateUserRequest(
+                user_id=user_id,
+                email=serializer.validated_data["email"],
+                updated_by=request.user.user_id,
+            )
+        )
+        return success_response(UserSummarySerializer(result).data)
+
+
+class UserActivateView(APIView):
+    """POST /api/v1/auth/users/{user_id}/activate/ — requires identity.manage_users."""
+
+    permission_classes = [HasPermission("identity.manage_users")]
+
+    @extend_schema(
+        summary="Activate a user",
+        request=None,
+        responses={200: UserSummarySerializer},
+    )
+    def post(self, request: Request, user_id: uuid.UUID) -> Response:
+        result = dependencies.build_activate_user_use_case().execute(user_id)
+        return success_response(UserSummarySerializer(result).data)
+
+
+class UserDeactivateView(APIView):
+    """POST /api/v1/auth/users/{user_id}/deactivate/ — requires identity.manage_users.
+
+    Takes effect immediately: is_active is checked fresh on every
+    authenticated request (see this module's architecture notes), so a
+    deactivated user's existing access/refresh tokens stop working on their
+    very next request, with no separate revocation step needed.
+    """
+
+    permission_classes = [HasPermission("identity.manage_users")]
+
+    @extend_schema(
+        summary="Deactivate a user",
+        request=None,
+        responses={200: UserSummarySerializer},
+    )
+    def post(self, request: Request, user_id: uuid.UUID) -> Response:
+        result = dependencies.build_deactivate_user_use_case().execute(user_id)
+        return success_response(UserSummarySerializer(result).data)
 
 
 # RequestTelegramLinkView/VerifyTelegramLinkView/UnlinkTelegramView/

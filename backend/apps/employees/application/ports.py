@@ -4,8 +4,35 @@ application/ports.py precedent exactly.
 """
 from __future__ import annotations
 
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+
+
+class UserLookupPort(ABC):
+    """Phase 12 (link an existing Employee to an existing Identity User) —
+    the mirror image of `apps.leave.application.ports.EmployeeLookupPort`:
+    that port is how Leave learns about Employees without importing that
+    module's internals; this is how Employees learns whether a `user_id`
+    it's about to link actually exists, without importing
+    `apps.identity`'s domain/infrastructure. The concrete adapter
+    (infrastructure/user_lookup_adapter.py) is the only file in this
+    module allowed to import `apps.identity`, and even then only that
+    module's already-composed public use cases (via its own
+    `interface/dependencies.py`), never its ORM models directly.
+    """
+
+    @abstractmethod
+    def user_exists(self, user_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_user_email(self, user_id: uuid.UUID) -> str | None:
+        """Phase 12 bugfix: resolves the email of the User linked to an
+        Employee, for the Employee Details page's "linked username/email"
+        requirement. Returns None if user_id doesn't resolve to a real
+        User (defensive — same reasoning as `user_exists`)."""
+        raise NotImplementedError
 
 
 class EmployeeOTPEmailPort(ABC):

@@ -86,7 +86,6 @@ class JWTAuthentication(BaseAuthentication):
             email=str(user.email),
             role_names=user.role_names,
             permission_codes=user.permission_codes,
-            is_system_account=user.is_system_account,
         )
         # jti is returned as the "auth" element of the tuple so views/use
         # cases that need it (logout) can read it off request.auth without

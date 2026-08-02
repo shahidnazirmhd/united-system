@@ -246,7 +246,7 @@ Conventions used throughout: primary keys are `UUID DEFAULT uuid_generate_v7()` 
 | date_of_birth | DATE | YES | NULL | PII — see §8 |
 | gender | VARCHAR(30) | YES | NULL | open text by design, see §6.3 |
 | date_of_joining | DATE | NO | — | |
-| termination_date | DATE | YES | NULL | |
+| last_working_date | DATE | YES | NULL | renamed from termination_date (round 15 item 9) — used for both resignation and termination |
 | employment_status | VARCHAR(20) | NO | `'active'` | CHECK IN (`active`,`on_leave`,`suspended`,`terminated`) |
 | employment_type | VARCHAR(20) | NO | — | CHECK IN (`full_time`,`part_time`,`contract`,`intern`) |
 | department_id | UUID | NO | — | FK → `departments.id` ON DELETE RESTRICT |
@@ -441,7 +441,7 @@ The employee-scale tables themselves (`employees`, `departments`, `users`, `role
 
 Every CHECK constraint below enforces structural/data sanity — the kind of invariant that should never be violated regardless of which client or code path wrote the row. It deliberately does **not** encode business rules like "an employee can't request more leave than their balance" — per Clean Architecture as already established, that belongs in the domain layer, where it can carry a meaningful error message back through the application layer, not a raw Postgres constraint violation. The line drawn here: a CHECK constraint answers "is this value structurally valid," never "is this action currently allowed."
 
-Concretely: `employees.employment_status IN (...)`, `employees.employment_type IN (...)`, `employees.termination_date IS NULL OR termination_date >= date_of_joining`, `leave_balances.entitled_days >= 0` (and same for `used_days`, `carried_forward_days`), `approval_steps.step_number > 0`, `approval_steps.approver_user_id IS NOT NULL OR approver_role_id IS NOT NULL`, `approval_workflows.status IN (...)`, `audit_log.action IN (...)`.
+Concretely: `employees.employment_status IN (...)`, `employees.employment_type IN (...)`, `employees.last_working_date IS NULL OR last_working_date >= date_of_joining`, `leave_balances.entitled_days >= 0` (and same for `used_days`, `carried_forward_days`), `approval_steps.step_number > 0`, `approval_steps.approver_user_id IS NOT NULL OR approver_role_id IS NOT NULL`, `approval_workflows.status IN (...)`, `audit_log.action IN (...)`.
 
 ### 6.3 Other data integrity decisions worth explaining
 

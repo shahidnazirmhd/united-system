@@ -115,3 +115,24 @@ def build_cancel_leave_confirm_keyboard(leave_request_id: str) -> dict[str, Any]
             ]
         ]
     }
+
+
+# --- Approval Engine (Phase 9) --------------------------------------------
+# Callback data uses `registry.callback_prefix()` (see that method's
+# docstring) since an approval request id is chosen at render time, not
+# known ahead of time.
+
+
+def build_approval_decision_keyboard(approval_request_id: str) -> dict[str, Any]:
+    """Attached to every "you have a decision to make" message — the
+    unsolicited push notification (`handlers/approval_handlers.py`'s
+    `POST /internal/notify` handler) and each per-item message
+    `/pending_approvals` sends both use this same keyboard."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Approve", "callback_data": f"approval:decide:approve:{approval_request_id}"},
+                {"text": "❌ Reject", "callback_data": f"approval:decide:reject:{approval_request_id}"},
+            ]
+        ]
+    }

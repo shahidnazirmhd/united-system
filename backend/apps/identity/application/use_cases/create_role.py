@@ -8,6 +8,7 @@ authorization system.
 from __future__ import annotations
 
 from apps.identity.application.dtos import CreateRoleRequest, RoleResponse
+from apps.identity.application.mappers import role_to_response
 from apps.identity.domain.entities import Role
 from apps.identity.domain.exceptions import DuplicateRoleNameError, PermissionNotFoundError
 from apps.identity.domain.repositories import PermissionRepository, RoleRepository
@@ -42,10 +43,4 @@ class CreateRoleUseCase(UseCase[CreateRoleRequest, RoleResponse]):
         with self._uow:
             saved = self._roles.save(role, request.permission_codes)
 
-        return RoleResponse(
-            id=saved.id,
-            name=saved.name,
-            description=saved.description,
-            is_system_role=saved.is_system_role,
-            permission_codes=saved.permission_codes,
-        )
+        return role_to_response(saved)

@@ -57,8 +57,37 @@ class FakeEventBus(EventBus):
 
 
 class FakeEmployeeLookupPort:
-    def __init__(self, existing_employee_ids=None):
+    """Approval Engine (Phase 9): every employee passed in `existing_employee_ids`
+    is auto-assigned a manager who is auto-linked to Telegram by default —
+    keeps every pre-Phase-9 test in this file passing unmodified, since none
+    of them care about manager/Telegram specifics; a test that DOES care
+    passes `managers=`/`telegram_linked_employee_ids=` explicitly (see
+    apps.leave.tests.unit.test_leave_validation_service for the dedicated
+    validate_manager_available_for_approval tests).
+
+    Round 14 item 6: every existing employee is eligible for leave by
+    default too — a test that DOES care passes `ineligible_employee_ids=`
+    explicitly (see test_leave_validation_service for the dedicated
+    validate_employee_eligible_for_leave tests)."""
+
+    def __init__(
+        self,
+        existing_employee_ids=None,
+        *,
+        managers: dict | None = None,
+        telegram_linked_employee_ids: set | None = None,
+        ineligible_employee_ids: set | None = None,
+    ):
         self._existing = existing_employee_ids or set()
+        self._managers = dict(managers or {})
+        for employee_id in self._existing:
+            self._managers.setdefault(employee_id, uuid.uuid4())
+        self._telegram_linked = (
+            set(telegram_linked_employee_ids)
+            if telegram_linked_employee_ids is not None
+            else set(self._managers.values())
+        )
+        self._ineligible = set(ineligible_employee_ids or set())
 
     def employee_exists(self, employee_id):
         return employee_id in self._existing
@@ -68,6 +97,102 @@ class FakeEmployeeLookupPort:
 
     def get_employee_id_by_telegram_user_id(self, telegram_user_id):
         raise NotImplementedError
+
+    def get_manager_employee_id(self, employee_id):
+        return self._managers.get(employee_id)
+
+    def is_employee_linked_to_telegram(self, employee_id):
+        return employee_id in self._telegram_linked
+
+    def get_employee_display_info(self, employee_id):
+        return None
+
+    def is_employee_eligible_for_leave(self, employee_id):
+        return employee_id not in self._ineligible
+
+    def list_employee_ids_on_leave_status(self):
+        return []
+
+
+class FakeSettingsLookupPort:
+    """Round 14 item 6 — stands in for `apps.settings` via
+    `SettingsLookupPort`. Default `week_off_weekday=6` (Sunday) matches the
+    production seed default; every test in this file that doesn't care
+    about the specific weekday just gets the production default."""
+
+    def __init__(self, week_off_weekday: int = 6):
+        self._week_off_weekday = week_off_weekday
+
+    def get_default_week_off_weekday(self) -> int:
+        return self._week_off_weekday
+
+
+class FakeHolidayLookupPort:
+    """Round 14 item 6 — stands in for `apps.attendance` via
+    `HolidayLookupPort`. No holidays unless a test explicitly configures
+    them."""
+
+    def __init__(self, holiday_dates=None):
+        self._holiday_dates = frozenset(holiday_dates or ())
+
+    def get_holiday_dates_in_range(self, *, start_date, end_date):
+        return frozenset(d for d in self._holiday_dates if start_date <= d <= end_date)
+
+
+class FakeEmployeeStatusPort:
+    """Round 14 item 8 — stands in for `apps.employees` via
+    `EmployeeStatusPort`. Records every call rather than actually mutating
+    anything, so a test can assert on `entered`/`exited` if it cares."""
+
+    def __init__(self):
+        self.entered: list[tuple] = []
+        self.exited: list = []
+
+    def enter_leave_status(self, employee_id, leave_status):
+        self.entered.append((employee_id, leave_status))
+
+    def exit_leave_status(self, employee_id):
+        self.exited.append(employee_id)
+
+
+class FakeLeaveNotificationPort:
+    """Round 15 item 6 — stands in for the Telegram push channel via
+    `LeaveNotificationPort`. Records every call rather than actually
+    dispatching anything, so a test can assert on `notified` if it cares."""
+
+    def __init__(self):
+        self.notified: list[dict] = []
+
+    def notify_leave_cancelled(self, *, employee_id, leave_request_id, summary, was_approved):
+        self.notified.append(
+            {
+                "employee_id": employee_id,
+                "leave_request_id": leave_request_id,
+                "summary": summary,
+                "was_approved": was_approved,
+            }
+        )
+
+
+class FakeApprovalRequestPort:
+    def __init__(self):
+        self.created: list[dict] = []
+        # Round 17 item 2 — records every `cancel_approval_request` call so
+        # a test can assert `cancel_leave` always closes the approval side,
+        # regardless of the leave request's own prior status.
+        self.cancelled: list[dict] = []
+
+    def create_approval_request(self, *, subject_id, requested_by_employee_id, subject_summary):
+        self.created.append(
+            {
+                "subject_id": subject_id,
+                "requested_by_employee_id": requested_by_employee_id,
+                "subject_summary": subject_summary,
+            }
+        )
+
+    def cancel_approval_request(self, *, subject_id, reason=None):
+        self.cancelled.append({"subject_id": subject_id, "reason": reason})
 
 
 class FakeLeaveTypeRepository:
@@ -193,7 +318,13 @@ def _leave_type(**overrides) -> LeaveType:
 
 
 def _build(
-    *, employee_ids=None, leave_types=None, balances=None, requests=None
+    *,
+    employee_ids=None,
+    leave_types=None,
+    balances=None,
+    requests=None,
+    approval_requests=None,
+    notifications=None,
 ) -> tuple[LeaveRequestService, FakeLeaveRequestRepository, FakeLeaveBalanceRepository, FakeEventBus]:
     leave_type_repo = FakeLeaveTypeRepository(leave_types or [])
     balance_repo = FakeLeaveBalanceRepository(balances or [])
@@ -218,6 +349,11 @@ def _build(
         balance_service=balance_service,
         unit_of_work=FakeUnitOfWork(),
         event_bus=event_bus,
+        approval_requests=approval_requests if approval_requests is not None else FakeApprovalRequestPort(),
+        settings_lookup=FakeSettingsLookupPort(),
+        holiday_lookup=FakeHolidayLookupPort(),
+        employee_status=FakeEmployeeStatusPort(),
+        notifications=notifications if notifications is not None else FakeLeaveNotificationPort(),
     )
     return service, request_repo, balance_repo, event_bus
 
@@ -275,6 +411,104 @@ def test_apply_leave_raises_for_insufficient_balance() -> None:
                 end_date=date(date.today().year + 1, 6, 5),  # 5 days requested, only 1 entitled
             )
         )
+
+
+def test_apply_leave_opens_an_approval_request_via_the_approvals_port() -> None:
+    """Approval Engine (Phase 9): apply_leave must call
+    ApprovalRequestPort.create_approval_request with the newly-created
+    LeaveRequest's id, the applicant's employee id, and a non-empty
+    subject_summary — proves the Leave -> Approvals wiring without needing
+    the real apps.approvals module at all (FakeApprovalRequestPort stands
+    in for ApprovalServiceRequestAdapter)."""
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    balance = LeaveBalance(
+        id=uuid.uuid4(), employee_id=employee_id, leave_type_id=leave_type.id, year=date.today().year + 1, entitled_days=Decimal("20")
+    )
+    leave_type_repo = FakeLeaveTypeRepository([leave_type])
+    balance_repo = FakeLeaveBalanceRepository([balance])
+    request_repo = FakeLeaveRequestRepository([])
+    approval_port = FakeApprovalRequestPort()
+    validation = LeaveValidationService(
+        leave_type_repository=leave_type_repo,
+        leave_balance_repository=balance_repo,
+        leave_request_repository=request_repo,
+        employee_lookup=FakeEmployeeLookupPort({employee_id}),
+    )
+    balance_service = LeaveBalanceService(
+        leave_balance_repository=balance_repo,
+        leave_type_repository=leave_type_repo,
+        leave_request_repository=request_repo,
+        unit_of_work=FakeUnitOfWork(),
+    )
+    service = LeaveRequestService(
+        leave_request_repository=request_repo,
+        leave_type_repository=leave_type_repo,
+        validation_service=validation,
+        balance_service=balance_service,
+        unit_of_work=FakeUnitOfWork(),
+        event_bus=FakeEventBus(),
+        approval_requests=approval_port,
+        settings_lookup=FakeSettingsLookupPort(),
+        holiday_lookup=FakeHolidayLookupPort(),
+        employee_status=FakeEmployeeStatusPort(),
+        notifications=FakeLeaveNotificationPort(),
+    )
+    start, end = date(date.today().year + 1, 6, 1), date(date.today().year + 1, 6, 3)
+
+    result = service.apply_leave(
+        ApplyLeaveRequest(employee_id=employee_id, leave_type_id=leave_type.id, start_date=start, end_date=end)
+    )
+
+    assert len(approval_port.created) == 1
+    created = approval_port.created[0]
+    assert created["subject_id"] == result.id
+    assert created["requested_by_employee_id"] == employee_id
+    assert leave_type.name in created["subject_summary"]
+
+
+def test_apply_leave_raises_for_no_manager_assigned() -> None:
+    from apps.leave.domain.exceptions import NoManagerAssignedError
+
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    leave_type_repo = FakeLeaveTypeRepository([leave_type])
+    balance_repo = FakeLeaveBalanceRepository([])
+    request_repo = FakeLeaveRequestRepository([])
+    validation = LeaveValidationService(
+        leave_type_repository=leave_type_repo,
+        leave_balance_repository=balance_repo,
+        leave_request_repository=request_repo,
+        employee_lookup=FakeEmployeeLookupPort({employee_id}, managers={employee_id: None}),
+    )
+    balance_service = LeaveBalanceService(
+        leave_balance_repository=balance_repo,
+        leave_type_repository=leave_type_repo,
+        leave_request_repository=request_repo,
+        unit_of_work=FakeUnitOfWork(),
+    )
+    service = LeaveRequestService(
+        leave_request_repository=request_repo,
+        leave_type_repository=leave_type_repo,
+        validation_service=validation,
+        balance_service=balance_service,
+        unit_of_work=FakeUnitOfWork(),
+        event_bus=FakeEventBus(),
+        approval_requests=FakeApprovalRequestPort(),
+        settings_lookup=FakeSettingsLookupPort(),
+        holiday_lookup=FakeHolidayLookupPort(),
+        employee_status=FakeEmployeeStatusPort(),
+        notifications=FakeLeaveNotificationPort(),
+    )
+
+    with pytest.raises(NoManagerAssignedError):
+        service.apply_leave(
+            ApplyLeaveRequest(
+                employee_id=employee_id,
+                leave_type_id=leave_type.id,
+                start_date=date.today() + timedelta(days=5),
+                end_date=date.today() + timedelta(days=6),
+            )
+        )
+    assert request_repo._requests == []  # aborted before the LeaveRequest was ever created
 
 
 def test_apply_leave_raises_for_overlapping_existing_request() -> None:
@@ -358,6 +592,12 @@ def test_cancel_leave_of_approved_request_restores_balance() -> None:
         leave_type_id=leave_type.id,
         date_range=DateRange(start_date=date(year, 6, 1), end_date=date(year, 6, 3)),  # 3 days
         status=LeaveRequestStatus.APPROVED,
+        # Round 14 item 6 — balance mutation now uses working_days, not
+        # total_days; this entity is constructed directly (bypassing
+        # apply_leave's own working-day calculation), so it must be set
+        # explicitly to match the 3 calendar days above (no week-off/
+        # holiday in range for this test).
+        working_days=Decimal("3"),
     )
     balance = LeaveBalance(
         id=uuid.uuid4(), employee_id=employee_id, leave_type_id=leave_type.id, year=year, entitled_days=Decimal("20"), used_days=Decimal("3")
@@ -379,6 +619,102 @@ def test_cancel_leave_raises_not_found_for_unknown_request() -> None:
         service.cancel_leave(CancelLeaveRequest(leave_request_id=uuid.uuid4(), acting_employee_id=uuid.uuid4()))
 
 
+# --- cancel_leave: round 17 items 2/3 -------------------------------------
+
+
+def test_cancel_leave_of_pending_request_closes_its_approval_request() -> None:
+    """Round 17 item 2 — cancelling a still-PENDING (not yet approved)
+    leave request must also close its open approval request, not just the
+    leave request itself, so no approver can later approve/reject it."""
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    pending = LeaveRequest(
+        id=uuid.uuid4(),
+        employee_id=employee_id,
+        leave_type_id=leave_type.id,
+        date_range=DateRange(start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=6)),
+        status=LeaveRequestStatus.PENDING,
+    )
+    approval_port = FakeApprovalRequestPort()
+    service, *_ = _build(
+        employee_ids={employee_id}, leave_types=[leave_type], requests=[pending], approval_requests=approval_port
+    )
+
+    service.cancel_leave(
+        CancelLeaveRequest(leave_request_id=pending.id, acting_employee_id=employee_id, cancellation_reason="Changed my mind")
+    )
+
+    assert approval_port.cancelled == [{"subject_id": pending.id, "reason": "Changed my mind"}]
+
+
+def test_cancel_leave_of_approved_request_also_closes_approval_request() -> None:
+    """Round 17 item 2 — `cancel_approval_request` is called unconditionally
+    on every cancellation, not just a still-pending one; the Approval
+    Engine's own `get_pending_by_subject` lookup is what makes this a
+    no-op for a request whose approval chain already finished."""
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    approved = LeaveRequest(
+        id=uuid.uuid4(),
+        employee_id=employee_id,
+        leave_type_id=leave_type.id,
+        date_range=DateRange(start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=6)),
+        status=LeaveRequestStatus.APPROVED,
+        working_days=Decimal("2"),
+    )
+    approval_port = FakeApprovalRequestPort()
+    service, *_ = _build(
+        employee_ids={employee_id}, leave_types=[leave_type], requests=[approved], approval_requests=approval_port
+    )
+
+    service.cancel_leave(CancelLeaveRequest(leave_request_id=approved.id, acting_employee_id=employee_id))
+
+    assert approval_port.cancelled == [{"subject_id": approved.id, "reason": None}]
+
+
+def test_cancel_leave_of_pending_request_notifies_employee_with_was_approved_false() -> None:
+    """Round 17 item 3 — notification now fires for a still-pending
+    cancellation too (previously gated behind `if was_approved:`), with
+    `was_approved=False` so the recipient sees the right wording."""
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    pending = LeaveRequest(
+        id=uuid.uuid4(),
+        employee_id=employee_id,
+        leave_type_id=leave_type.id,
+        date_range=DateRange(start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=6)),
+        status=LeaveRequestStatus.PENDING,
+    )
+    notifications = FakeLeaveNotificationPort()
+    service, *_ = _build(
+        employee_ids={employee_id}, leave_types=[leave_type], requests=[pending], notifications=notifications
+    )
+
+    service.cancel_leave(CancelLeaveRequest(leave_request_id=pending.id, acting_employee_id=employee_id))
+
+    assert len(notifications.notified) == 1
+    assert notifications.notified[0]["employee_id"] == employee_id
+    assert notifications.notified[0]["was_approved"] is False
+
+
+def test_cancel_leave_of_approved_request_notifies_employee_with_was_approved_true() -> None:
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    approved = LeaveRequest(
+        id=uuid.uuid4(),
+        employee_id=employee_id,
+        leave_type_id=leave_type.id,
+        date_range=DateRange(start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=6)),
+        status=LeaveRequestStatus.APPROVED,
+        working_days=Decimal("2"),
+    )
+    notifications = FakeLeaveNotificationPort()
+    service, *_ = _build(
+        employee_ids={employee_id}, leave_types=[leave_type], requests=[approved], notifications=notifications
+    )
+
+    service.cancel_leave(CancelLeaveRequest(leave_request_id=approved.id, acting_employee_id=employee_id))
+
+    assert len(notifications.notified) == 1
+    assert notifications.notified[0]["was_approved"] is True
+
+
 # --- approve / reject (Approval module extension point) ------------------
 
 
@@ -391,6 +727,9 @@ def test_approve_increases_used_days_and_publishes_event() -> None:
         leave_type_id=leave_type.id,
         date_range=DateRange(start_date=date(year, 6, 1), end_date=date(year, 6, 4)),  # 4 days
         status=LeaveRequestStatus.PENDING,
+        # Round 14 item 6 — see test_cancel_leave_of_approved_request_restores_balance's
+        # identical comment on why this must be set explicitly here.
+        working_days=Decimal("4"),
     )
     balance = LeaveBalance(id=uuid.uuid4(), employee_id=employee_id, leave_type_id=leave_type.id, year=year, entitled_days=Decimal("20"))
     approver_id = uuid.uuid4()

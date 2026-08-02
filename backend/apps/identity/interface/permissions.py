@@ -19,10 +19,14 @@ from rest_framework.views import APIView
 
 
 class HasRole(BasePermission):
-    """Usage: `permission_classes = [HasRole("HR Admin")]` — instantiate
+    """Usage: `permission_classes = [HasRole("Admin")]` — instantiate
     with the required role name. Multiple required roles can be composed
-    with DRF's `|`/`&` permission operators, e.g. `HasRole("HR Admin") |
-    HasRole("Payroll Admin")`.
+    with DRF's `|`/`&` permission operators, e.g. `HasRole("Admin") |
+    HasRole("Auditor")`. In practice, every view in this codebase prefers
+    `HasPermission` over `HasRole` — gating on a permission code rather than
+    a specific role name is what lets an Admin freely rename/replace roles
+    (Role Management, Phase "Role & Permission Management") without any
+    view's authorization logic needing to change.
     """
 
     def __init__(self, role_name: str) -> None:

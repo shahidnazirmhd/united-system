@@ -15,14 +15,27 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.employees.application.dtos import CreateEmployeeRequest, UpdateEmployeeRequest
+from apps.employees.application.dtos import (
+    CreateDepartmentRequest,
+    CreateEmployeeRequest,
+    LinkUserToEmployeeRequest,
+    UpdateDepartmentRequest,
+    UpdateEmployeeCurrentStatusRequest,
+    UpdateEmployeeRequest,
+)
+from apps.employees.application.services.department_service import DepartmentService
 from apps.employees.application.services.employee_service import EmployeeService
-from apps.employees.infrastructure.models import EmployeeRecord
+from apps.employees.infrastructure.models import DepartmentRecord, EmployeeRecord
 from apps.employees.interface import dependencies
 from apps.employees.interface.permissions import HasPermission, MANAGE_EMPLOYEES, VIEW_EMPLOYEES
 from apps.employees.interface.serializers import (
+    CreateDepartmentSerializer,
     CreateEmployeeSerializer,
+    DepartmentResponseSerializer,
     EmployeeResponseSerializer,
+    LinkUserToEmployeeSerializer,
+    UpdateDepartmentSerializer,
+    UpdateEmployeeCurrentStatusSerializer,
     UpdateEmployeeSerializer,
 )
 from shared_kernel.api.base_viewset import BaseViewSet
@@ -41,14 +54,22 @@ class EmployeeViewSet(BaseViewSet):
         return dependencies.build_employee_service()
 
     def get_permissions(self):
-        if self.action in ("create", "update", "activate", "deactivate"):
+        if self.action in (
+            "create",
+            "update",
+            "activate",
+            "deactivate",
+            "link_user",
+            "update_current_status",
+        ):
             return [HasPermission(MANAGE_EMPLOYEES)]
         if self.action == "me":
             # Self-service (Phase 7): viewing your OWN record needs only
             # authentication, not employees.view_employees — that
-            # permission gates viewing *anyone's* record (HR Admin/Manager
-            # territory), which is a strictly bigger grant than "see your
-            # own profile," the thing Telegram self-service actually needs.
+            # permission gates viewing *anyone's* record (Admin, or any
+            # custom role granted it, territory), which is a strictly
+            # bigger grant than "see your own profile," the thing Telegram
+            # self-service actually needs.
             return [IsAuthenticated()]
         return [HasPermission(VIEW_EMPLOYEES)]
 
@@ -109,7 +130,7 @@ class EmployeeViewSet(BaseViewSet):
                 job_title=data["job_title"],
                 employment_type=data["employment_type"],
                 date_of_joining=data["date_of_joining"],
-                termination_date=data["termination_date"],
+                last_working_date=data["last_working_date"],  # round 15 item 9
                 updated_by=request.user.user_id,
             )
         )
@@ -140,6 +161,27 @@ class EmployeeViewSet(BaseViewSet):
         return self.list(request, *args, **kwargs)
 
     @extend_schema(
+        summary="Link an existing employee to an existing user",
+        description="Phase 12 (User Management). Requires employees.manage_employees. "
+        "The only other way to set user_id is at creation time — this closes the gap "
+        "for an employee record that already exists.",
+        request=LinkUserToEmployeeSerializer,
+        responses={200: EmployeeResponseSerializer},
+    )
+    def link_user(self, request: Request, pk: uuid.UUID | None = None, *args, **kwargs) -> Response:
+        serializer = LinkUserToEmployeeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result = self.get_service().link_user(
+            LinkUserToEmployeeRequest(
+                employee_id=pk,
+                user_id=serializer.validated_data["user_id"],
+                updated_by=request.user.user_id,
+            )
+        )
+        return success_response(EmployeeResponseSerializer(result).data)
+
+    @extend_schema(
         summary="Activate an employee",
         description="ACTIVE <- SUSPENDED/ON_LEAVE. Requires employees.manage_employees.",
         request=None,
@@ -158,3 +200,98 @@ class EmployeeViewSet(BaseViewSet):
     def deactivate(self, request: Request, pk: uuid.UUID | None = None, *args, **kwargs) -> Response:
         result = self.get_service().deactivate_employee(pk)
         return success_response(EmployeeResponseSerializer(result).data)
+
+    @extend_schema(
+        summary="Update an employee's Current Status",
+        description="Round 14 item 8. Requires employees.manage_employees. Sick Leave/Annual "
+        "Leave cannot be set here — they are managed automatically by the Leave module. "
+        "422 invalid_current_status_transition if the employee is Terminated/Resigned "
+        "(terminal), or currently on an auto-managed leave status and the target isn't "
+        "Terminated/Resigned.",
+        request=UpdateEmployeeCurrentStatusSerializer,
+        responses={200: EmployeeResponseSerializer},
+    )
+    def update_current_status(self, request: Request, pk: uuid.UUID | None = None, *args, **kwargs) -> Response:
+        serializer = UpdateEmployeeCurrentStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result = self.get_service().update_current_status(
+            UpdateEmployeeCurrentStatusRequest(
+                employee_id=pk,
+                current_status=serializer.validated_data["current_status"],
+                updated_by=request.user.user_id,
+            )
+        )
+        return success_response(EmployeeResponseSerializer(result).data)
+
+
+class DepartmentViewSet(BaseViewSet):
+    """Phase 12 (Department CRUD). list/retrieve inherited from
+    BaseViewSet, matching EmployeeViewSet's own precedent exactly — same
+    reused permission codes (employees.view_employees/manage_employees),
+    since Department is part of the Employee bounded context, not a
+    separate permission scope. No delete action: same "deactivate, don't
+    hard-delete" precedent EmployeeViewSet already established, doubly
+    true here since DepartmentRecord.parent_department/EmployeeRecord.department
+    are both RESTRICT-constrained FKs (a real delete on a referenced
+    department would just fail at the database level anyway)."""
+
+    queryset = DepartmentRecord.objects.all()
+    response_serializer_class = DepartmentResponseSerializer
+    filter_fields = ("is_active",)
+    search_fields = ("name", "code")
+    default_ordering = ("name",)
+
+    def get_service(self) -> DepartmentService:
+        return dependencies.build_department_service()
+
+    def get_permissions(self):
+        if self.action in ("create", "update"):
+            return [HasPermission(MANAGE_EMPLOYEES)]
+        return [HasPermission(VIEW_EMPLOYEES)]
+
+    @extend_schema(
+        summary="Create a department",
+        description="Requires employees.manage_employees.",
+        request=CreateDepartmentSerializer,
+        responses={201: DepartmentResponseSerializer},
+    )
+    def create(self, request: Request, *args, **kwargs) -> Response:
+        serializer = CreateDepartmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self.get_service().create_department(
+            CreateDepartmentRequest(
+                name=data["name"],
+                code=data["code"],
+                parent_department_id=data["parent_department_id"],
+                head_employee_id=data["head_employee_id"],
+                created_by=request.user.user_id,
+            )
+        )
+        return success_response(DepartmentResponseSerializer(result).data, status_code=201)
+
+    @extend_schema(
+        summary="Update a department",
+        description="Full-replace update. Requires employees.manage_employees.",
+        request=UpdateDepartmentSerializer,
+        responses={200: DepartmentResponseSerializer},
+    )
+    def update(self, request: Request, pk: uuid.UUID | None = None, *args, **kwargs) -> Response:
+        serializer = UpdateDepartmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self.get_service().update_department(
+            UpdateDepartmentRequest(
+                department_id=pk,
+                name=data["name"],
+                code=data["code"],
+                parent_department_id=data["parent_department_id"],
+                head_employee_id=data["head_employee_id"],
+                is_active=data["is_active"],
+                updated_by=request.user.user_id,
+            )
+        )
+        return success_response(DepartmentResponseSerializer(result).data)

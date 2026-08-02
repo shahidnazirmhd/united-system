@@ -40,10 +40,12 @@ def manage_roles_permission() -> PermissionRecord:
 @pytest.fixture
 def admin_user(hasher, manage_roles_permission) -> UserRecord:
     user = UserRecord.objects.create(email="admin@example.com", password_hash=hasher.hash("admin-password-123"))
-    # "HR Admin" is seeded by 0002_seed_system_roles.py with every identity.*
-    # permission (including manage_roles_permission above) already granted —
-    # fetch it rather than creating a second role with the same name.
-    admin_role = RoleRecord.objects.get(name="HR Admin")
+    # Seeded as "HR Admin" by 0002_seed_system_roles.py with every identity.*
+    # permission (including manage_roles_permission above) already granted,
+    # then renamed to "Admin" by 0006_rename_admin_role_and_prune_system_roles.py
+    # (Role & Permission Management phase) — fetch it rather than creating a
+    # second role with the same name.
+    admin_role = RoleRecord.objects.get(name="Admin")
     user.roles.add(admin_role, through_defaults={"assigned_by": None})
     return user
 

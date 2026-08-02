@@ -29,23 +29,23 @@ def test_contact_information_normalizes_email_case() -> None:
     assert str(contact.work_email) == "ada.lovelace@example.com"
 
 
-def test_employment_information_rejects_termination_before_joining() -> None:
+def test_employment_information_rejects_last_working_date_before_joining() -> None:
     with pytest.raises(ValueError):
         EmploymentInformation(
             department_id=uuid.uuid4(),
             job_title="Engineer",
             employment_type=EmploymentType.FULL_TIME,
             date_of_joining=date(2024, 6, 1),
-            termination_date=date(2024, 1, 1),
+            last_working_date=date(2024, 1, 1),
         )
 
 
-def test_employment_information_allows_termination_on_joining_date() -> None:
+def test_employment_information_allows_last_working_date_on_joining_date() -> None:
     info = EmploymentInformation(
         department_id=uuid.uuid4(),
         job_title="Engineer",
         employment_type=EmploymentType.FULL_TIME,
         date_of_joining=date(2024, 6, 1),
-        termination_date=date(2024, 6, 1),
+        last_working_date=date(2024, 6, 1),
     )
-    assert info.termination_date == info.date_of_joining
+    assert info.last_working_date == info.date_of_joining

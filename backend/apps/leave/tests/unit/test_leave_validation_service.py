@@ -19,6 +19,8 @@ from apps.leave.domain.exceptions import (
     InvalidLeaveDateRangeError,
     LeaveEmployeeNotFoundError,
     LeaveTypeNotFoundError,
+    ManagerNotLinkedToTelegramError,
+    NoManagerAssignedError,
     OverlappingLeaveRequestError,
     PastLeaveStartDateError,
 )
@@ -26,8 +28,16 @@ from shared_kernel.domain.value_objects import DateRange
 
 
 class FakeEmployeeLookupPort:
-    def __init__(self, existing_employee_ids: set[uuid.UUID] | None = None):
+    def __init__(
+        self,
+        existing_employee_ids: set[uuid.UUID] | None = None,
+        *,
+        managers: dict[uuid.UUID, uuid.UUID | None] | None = None,
+        telegram_linked_employee_ids: set[uuid.UUID] | None = None,
+    ):
         self._existing = existing_employee_ids or set()
+        self._managers = managers or {}
+        self._telegram_linked = telegram_linked_employee_ids or set()
 
     def employee_exists(self, employee_id):
         return employee_id in self._existing
@@ -37,6 +47,12 @@ class FakeEmployeeLookupPort:
 
     def get_employee_id_by_telegram_user_id(self, telegram_user_id):
         raise NotImplementedError("not exercised by these tests")
+
+    def get_manager_employee_id(self, employee_id):
+        return self._managers.get(employee_id)
+
+    def is_employee_linked_to_telegram(self, employee_id):
+        return employee_id in self._telegram_linked
 
 
 class FakeLeaveTypeRepository:
@@ -207,6 +223,51 @@ def test_validate_employee_exists_passes_for_known_employee() -> None:
     )
 
     service.validate_employee_exists(employee_id)  # does not raise
+
+
+# --- validate_manager_available_for_approval (Approval Engine, Phase 9) --
+
+
+def test_validate_manager_available_for_approval_raises_when_no_manager_assigned() -> None:
+    employee_id = uuid.uuid4()
+    service = LeaveValidationService(
+        leave_type_repository=FakeLeaveTypeRepository(),
+        leave_balance_repository=FakeLeaveBalanceRepository(),
+        leave_request_repository=FakeLeaveRequestRepository(),
+        employee_lookup=FakeEmployeeLookupPort({employee_id}, managers={employee_id: None}),
+    )
+
+    with pytest.raises(NoManagerAssignedError):
+        service.validate_manager_available_for_approval(employee_id)
+
+
+def test_validate_manager_available_for_approval_raises_when_manager_not_linked_to_telegram() -> None:
+    employee_id, manager_id = uuid.uuid4(), uuid.uuid4()
+    service = LeaveValidationService(
+        leave_type_repository=FakeLeaveTypeRepository(),
+        leave_balance_repository=FakeLeaveBalanceRepository(),
+        leave_request_repository=FakeLeaveRequestRepository(),
+        employee_lookup=FakeEmployeeLookupPort(
+            {employee_id}, managers={employee_id: manager_id}, telegram_linked_employee_ids=set()
+        ),
+    )
+
+    with pytest.raises(ManagerNotLinkedToTelegramError):
+        service.validate_manager_available_for_approval(employee_id)
+
+
+def test_validate_manager_available_for_approval_passes_when_manager_linked_to_telegram() -> None:
+    employee_id, manager_id = uuid.uuid4(), uuid.uuid4()
+    service = LeaveValidationService(
+        leave_type_repository=FakeLeaveTypeRepository(),
+        leave_balance_repository=FakeLeaveBalanceRepository(),
+        leave_request_repository=FakeLeaveRequestRepository(),
+        employee_lookup=FakeEmployeeLookupPort(
+            {employee_id}, managers={employee_id: manager_id}, telegram_linked_employee_ids={manager_id}
+        ),
+    )
+
+    service.validate_manager_available_for_approval(employee_id)  # does not raise
 
 
 # --- validate_and_get_leave_type -----------------------------------------

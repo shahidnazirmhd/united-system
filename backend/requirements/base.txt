@@ -16,6 +16,14 @@ django-redis>=5.4,<5.5
 # Background jobs
 celery>=5.4,<5.5
 
+# HTTP client used by apps/approvals's Celery task to call the Telegram
+# Gateway's internal notify endpoint (Phase 9 — the first backend->Gateway
+# call direction; every prior integration was the Gateway calling this API).
+# Same library the Gateway itself already depends on for its own outbound
+# calls, kept as a separate dependency here since these are two entirely
+# separate Python environments/services.
+httpx>=0.27,<0.28
+
 # Cross-origin requests (frontend integration)
 django-cors-headers>=4.4,<4.5
 

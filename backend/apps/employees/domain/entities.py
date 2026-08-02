@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from apps.employees.domain.enums import EmployeeStatus
+from apps.employees.domain.enums import EmployeeCurrentStatus, EmployeeStatus
 from apps.employees.domain.value_objects import ContactInformation, EmployeeProfile, EmploymentInformation
 from shared_kernel.domain.base_entity import Entity
 
@@ -61,10 +61,35 @@ class Employee(Entity):
     telegram_chat_id: int | None = None
     telegram_username: str | None = None
     telegram_linked_at: datetime | None = None
+    # Round 14 item 8 — a second, HR-visible "day-to-day work status"
+    # field, deliberately distinct from `status` above. See
+    # `EmployeeCurrentStatus`'s own docstring (domain/enums.py) for the
+    # full reasoning on why both fields coexist.
+    current_status: EmployeeCurrentStatus = EmployeeCurrentStatus.NOT_JOINED
+    # Set only while `current_status` is a system-managed leave status
+    # (SICK_LEAVE/ANNUAL_LEAVE) — remembers what to revert to when the
+    # leave ends (e.g. WORKING). None whenever current_status isn't one of
+    # those two values.
+    status_before_leave: EmployeeCurrentStatus | None = None
 
     @property
     def is_linked_to_telegram(self) -> bool:
         return self.telegram_user_id is not None
+
+    @property
+    def is_eligible_for_leave(self) -> bool:
+        """Round 14 item 6 — an employee may not apply for leave while
+        Not Joined, Terminated, or Resigned. "Currently on leave" (the
+        fourth disallowed state from the brief) is deliberately NOT part of
+        this check: it's enforced separately, against the specific dates
+        being requested, by `LeaveValidationService.validate_no_overlap`
+        (an employee can still apply for a *future* leave while currently
+        on a *different, non-overlapping* approved leave)."""
+        return self.current_status not in (
+            EmployeeCurrentStatus.NOT_JOINED,
+            EmployeeCurrentStatus.TERMINATED,
+            EmployeeCurrentStatus.RESIGNED,
+        )
 
     def link_telegram(
         self,
@@ -87,9 +112,16 @@ class Employee(Entity):
         """
         from apps.employees.domain.exceptions import EmployeeNotActiveError
 
-        if self.status == EmployeeStatus.TERMINATED:
+        # Round 14 item 7 broadened this guard from "TERMINATED only" to
+        # "must be ACTIVE or ON_LEAVE" — a SUSPENDED (deactivated) employee
+        # must not be able to link Telegram either, matching the new
+        # "prevent the employee from linking Telegram again while
+        # inactive" requirement. ON_LEAVE remains allowed: that status
+        # means the account is still active, just currently on leave.
+        if self.status not in (EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE):
             raise EmployeeNotActiveError(
-                f"Cannot link Telegram for a terminated employee ({self.employee_code})."
+                "Your employee account is currently deactivated, so Telegram cannot be linked. "
+                "Please contact HR to reactivate your account first."
             )
         return Employee(
             id=self.id,
@@ -103,6 +135,8 @@ class Employee(Entity):
             telegram_chat_id=chat_id,
             telegram_username=telegram_username,
             telegram_linked_at=linked_at,
+            current_status=self.current_status,
+            status_before_leave=self.status_before_leave,
         )
 
     def unlink_telegram(self) -> "Employee":
@@ -118,6 +152,8 @@ class Employee(Entity):
             telegram_chat_id=None,
             telegram_username=None,
             telegram_linked_at=None,
+            current_status=self.current_status,
+            status_before_leave=self.status_before_leave,
         )
 
     def activate(self) -> "Employee":
@@ -166,6 +202,106 @@ class Employee(Entity):
             telegram_chat_id=self.telegram_chat_id,
             telegram_username=self.telegram_username,
             telegram_linked_at=self.telegram_linked_at,
+            current_status=self.current_status,
+            status_before_leave=self.status_before_leave,
+        )
+
+    # --- Current Status (round 14 item 8) --------------------------------
+
+    def update_current_status_manually(self, new_status: EmployeeCurrentStatus) -> "Employee":
+        """HR/Admin manual path (e.g. Not Joined -> Working). See
+        `EmployeeCurrentStatus`'s docstring for the full transition rules;
+        enforced here rather than left to the caller so no interface-layer
+        code can ever bypass them (CODING_STANDARD.md: business rules live
+        in the domain/application layers, never the view)."""
+        from apps.employees.domain.exceptions import InvalidCurrentStatusTransitionError
+
+        if self.current_status in (EmployeeCurrentStatus.TERMINATED, EmployeeCurrentStatus.RESIGNED):
+            raise InvalidCurrentStatusTransitionError(
+                f"Employee {self.employee_code}'s status is {self.current_status.value} — this is terminal."
+            )
+        if new_status in (EmployeeCurrentStatus.SICK_LEAVE, EmployeeCurrentStatus.ANNUAL_LEAVE):
+            raise InvalidCurrentStatusTransitionError(
+                "Sick Leave/Annual Leave are set automatically when a leave request is approved "
+                "and cannot be chosen manually."
+            )
+        is_on_managed_leave = self.current_status in (
+            EmployeeCurrentStatus.SICK_LEAVE,
+            EmployeeCurrentStatus.ANNUAL_LEAVE,
+        )
+        if is_on_managed_leave and new_status not in (
+            EmployeeCurrentStatus.TERMINATED,
+            EmployeeCurrentStatus.RESIGNED,
+        ):
+            raise InvalidCurrentStatusTransitionError(
+                f"Employee {self.employee_code} is currently on {self.current_status.value}; status is "
+                "managed automatically until the leave ends. It can only be manually changed to "
+                "Terminated or Resigned while on leave."
+            )
+        return self._with_current_status(new_status, status_before_leave=None)
+
+    def enter_leave_status(self, leave_status: EmployeeCurrentStatus) -> "Employee":
+        """System-only path — called by Leave's status integration
+        (apps.leave, via its own EmployeeStatusPort) when an approved
+        leave's period starts. Terminated/Resigned are never touched (round
+        14 item 8: "Terminated and Resigned employees should not be
+        automatically changed by leave processes")."""
+        from apps.employees.domain.exceptions import InvalidCurrentStatusTransitionError
+
+        if leave_status not in (EmployeeCurrentStatus.SICK_LEAVE, EmployeeCurrentStatus.ANNUAL_LEAVE):
+            raise InvalidCurrentStatusTransitionError(
+                f"{leave_status.value} is not a leave status Leave's integration may enter."
+            )
+        if self.current_status in (EmployeeCurrentStatus.TERMINATED, EmployeeCurrentStatus.RESIGNED):
+            raise InvalidCurrentStatusTransitionError(
+                f"Employee {self.employee_code}'s status is {self.current_status.value} — this is terminal "
+                "and is never changed by leave processes."
+            )
+        # Already on a (possibly different) leave status — e.g. two
+        # back-to-back approved leaves with no gap: preserve the ORIGINAL
+        # status_before_leave rather than overwriting it with the first
+        # leave's own leave status, so exit_leave_status() still reverts to
+        # the real underlying employment status, not to the first leave.
+        remembered = (
+            self.status_before_leave
+            if self.current_status in (EmployeeCurrentStatus.SICK_LEAVE, EmployeeCurrentStatus.ANNUAL_LEAVE)
+            else self.current_status
+        )
+        return self._with_current_status(leave_status, status_before_leave=remembered)
+
+    def exit_leave_status(self) -> "Employee":
+        """System-only path — called when an approved leave's period ends.
+        Reverts to whatever `status_before_leave` remembered (defaulting to
+        WORKING if somehow unset — defensive only, `enter_leave_status`
+        always sets it). No-op guard: raises if the employee isn't
+        currently on a system-managed leave status at all (misuse by the
+        caller, not a real state this method should silently swallow)."""
+        from apps.employees.domain.exceptions import InvalidCurrentStatusTransitionError
+
+        if self.current_status not in (EmployeeCurrentStatus.SICK_LEAVE, EmployeeCurrentStatus.ANNUAL_LEAVE):
+            raise InvalidCurrentStatusTransitionError(
+                f"Employee {self.employee_code} is not currently on a system-managed leave status."
+            )
+        reverted_to = self.status_before_leave or EmployeeCurrentStatus.WORKING
+        return self._with_current_status(reverted_to, status_before_leave=None)
+
+    def _with_current_status(
+        self, current_status: EmployeeCurrentStatus, *, status_before_leave: EmployeeCurrentStatus | None
+    ) -> "Employee":
+        return Employee(
+            id=self.id,
+            employee_code=self.employee_code,
+            user_id=self.user_id,
+            profile=self.profile,
+            contact_info=self.contact_info,
+            employment_info=self.employment_info,
+            status=self.status,
+            telegram_user_id=self.telegram_user_id,
+            telegram_chat_id=self.telegram_chat_id,
+            telegram_username=self.telegram_username,
+            telegram_linked_at=self.telegram_linked_at,
+            current_status=current_status,
+            status_before_leave=status_before_leave,
         )
 
 

@@ -39,16 +39,49 @@ class DuplicateWorkEmailError(ConflictError):
     code = "duplicate_work_email"
 
 
+class DuplicateDepartmentCodeError(ConflictError):
+    """Phase 12 (Department CRUD): a department with this code already exists."""
+
+    code = "duplicate_department_code"
+
+
+class InvalidDepartmentParentError(ValidationError):
+    """Phase 12 (Department CRUD): a department cannot be its own parent."""
+
+    code = "invalid_department_parent"
+
+
 class UserAlreadyLinkedError(ConflictError):
     """This user account is already linked to a different employee."""
 
     code = "user_already_linked"
 
 
+class UserNotFoundError(NotFoundError):
+    """Phase 12 (link an existing employee to an existing user): the given
+    user_id doesn't exist in Identity. Deliberately the same `code` as
+    `apps.identity.domain.exceptions.UserNotFoundError` — both mean "no
+    User with this id," just raised from a different module's validation;
+    keeping the wire-level code identical is more useful to a frontend
+    than differentiating them would be."""
+
+    code = "user_not_found"
+
+
 class InvalidEmployeeStatusTransitionError(InvalidStateTransitionError):
     """This status change is not valid from the employee's current status."""
 
     code = "invalid_employee_status_transition"
+
+
+class InvalidCurrentStatusTransitionError(InvalidStateTransitionError):
+    """Round 14 item 8 — this Current Status change is not valid: either the
+    employee's current_status is terminal (Terminated/Resigned), or the
+    target is a system-managed leave status a manual update may never set,
+    or the employee is on an auto-managed leave status and this change
+    isn't the one manual exception (Terminated/Resigned)."""
+
+    code = "invalid_current_status_transition"
 
 
 # --- Telegram linking (Employee & Telegram Authentication refactor) ------

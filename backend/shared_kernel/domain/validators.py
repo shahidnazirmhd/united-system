@@ -4,7 +4,7 @@ These exist for validation rules genuinely common across modules' value
 objects (non-blank text, length limits, non-negative numbers) — the same
 category of "shared because more than one module needs it" as
 value_objects.py's Money/DateRange. Module-specific business rules (e.g.
-"termination_date must not precede date_of_joining") stay in that module's
+"last_working_date must not precede date_of_joining") stay in that module's
 own value objects/entities, not here.
 
 Every function raises shared_kernel's ValidationError on failure, not a

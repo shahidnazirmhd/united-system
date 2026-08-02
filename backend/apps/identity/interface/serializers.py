@@ -43,7 +43,6 @@ class UserSummarySerializer(serializers.Serializer):
     id = serializers.UUIDField()
     email = serializers.EmailField()
     is_active = serializers.BooleanField()
-    is_system_account = serializers.BooleanField()
     employee_id = serializers.UUIDField(allow_null=True)
     roles = RoleSummarySerializer(many=True)
     permission_codes = serializers.ListField(child=serializers.CharField())
@@ -52,7 +51,13 @@ class UserSummarySerializer(serializers.Serializer):
 class CreateUserSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=10, trim_whitespace=False)
-    is_system_account = serializers.BooleanField(default=False)
+
+
+class UpdateUserSerializer(serializers.Serializer):
+    """Phase 12 admin edit — see UpdateUserRequest's docstring for why this
+    deliberately excludes password/roles/is_active."""
+
+    email = serializers.EmailField()
 
 
 class RoleSerializer(serializers.Serializer):
@@ -67,6 +72,22 @@ class CreateRoleSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=50)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     permission_codes = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+
+
+class UpdateRoleSerializer(serializers.Serializer):
+    """Full-replace update — see UpdateRoleRequest's docstring on why
+    `permission_codes` is always the complete target set, not a diff."""
+
+    name = serializers.CharField(max_length=50)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    permission_codes = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+
+
+class PermissionSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    code = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    module = serializers.CharField()
 
 
 class AssignRoleSerializer(serializers.Serializer):

@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from src.api_client.endpoints.employees import EmployeeProfile, TelegramLinkStatus
 from src.auth.account_linking import AccountLinkingService
+from src.auth.approval_decision import ApprovalDecisionService
 from src.auth.leave_application import LeaveApplicationService
 from src.handlers import (  # noqa: F401 — registers commands
+    approval_handlers,
     help_handler,
     leave_handlers,
     link_handler,
@@ -17,6 +19,7 @@ from src.handlers import (  # noqa: F401 — registers commands
 from src.handlers.registry import registry
 from src.webhook.update_router import Dependencies, route
 from tests.fakes import (
+    FakeApprovalsEndpoint,
     FakeBotAPIClient,
     FakeCallbackQuery,
     FakeEmployeesEndpoint,
@@ -29,15 +32,17 @@ _PROFILE = EmployeeProfile(
     id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
     work_email="ada@example.com", phone_number=None, department_name="Engineering", manager_name=None,
     employment_type="full_time", date_of_joining="2024-01-15", status="active",
+    current_status="working",
     is_linked_to_telegram=True, telegram_username="ada",
 )
 _LINKED_STATUS = TelegramLinkStatus(is_linked=True, telegram_username="ada", linked_at="2024-01-01T00:00:00Z")
 _UNLINKED_STATUS = TelegramLinkStatus(is_linked=False, telegram_username=None, linked_at=None)
 
 
-def _deps(*, employees=None, leave=None):
+def _deps(*, employees=None, leave=None, approvals=None):
     employees = employees or FakeEmployeesEndpoint(link_status=_UNLINKED_STATUS)
     leave = leave or FakeLeaveEndpoint()
+    approvals = approvals or FakeApprovalsEndpoint()
     bot = FakeBotAPIClient()
     deps = Dependencies(
         bot=bot,
@@ -45,6 +50,8 @@ def _deps(*, employees=None, leave=None):
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, FakeRedis()),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
     return deps, bot
 

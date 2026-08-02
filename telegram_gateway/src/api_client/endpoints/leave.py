@@ -56,6 +56,10 @@ class LeaveRequest:
     start_date: str
     end_date: str
     total_days: str
+    # Round 15 item 2 — calendar days excluding the configured week-off and
+    # holidays; shown alongside total_days everywhere a leave request is
+    # rendered, per formatting/leave_formatter.py.
+    working_days: str
     reason: str | None
     status: str
     approved_by: str | None
@@ -109,6 +113,7 @@ def _parse_leave_request(data: dict) -> LeaveRequest:
         start_date=data["start_date"],
         end_date=data["end_date"],
         total_days=data["total_days"],
+        working_days=data["working_days"],
         reason=data.get("reason"),
         status=data["status"],
         approved_by=data.get("approved_by"),

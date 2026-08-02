@@ -23,7 +23,6 @@ class AuthenticatedPrincipal:
     email: str
     role_names: frozenset[str] = field(default_factory=frozenset)
     permission_codes: frozenset[str] = field(default_factory=frozenset)
-    is_system_account: bool = False
 
     @property
     def is_authenticated(self) -> bool:

@@ -11,12 +11,25 @@ here (see this phase's architecture notes).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
-from apps.leave.application.dtos import LeaveBalanceResponse
-from apps.leave.application.mappers import leave_balance_to_response
-from apps.leave.domain.entities import LeaveBalance, LeaveType
-from apps.leave.domain.repositories import LeaveBalanceRepository, LeaveRequestRepository, LeaveTypeRepository
+from apps.leave.application.dtos import AdjustLeaveBalanceRequest, LeaveBalanceAdjustmentResponse, LeaveBalanceResponse
+from apps.leave.application.mappers import leave_balance_adjustment_to_response, leave_balance_to_response
+from apps.leave.application.ports import EmployeeLookupPort
+from apps.leave.domain.entities import LeaveBalance, LeaveBalanceAdjustment, LeaveType
+from apps.leave.domain.enums import LeaveBalanceAdjustmentType
+from apps.leave.domain.exceptions import (
+    InvalidLeaveBalanceAdjustmentError,
+    LeaveEmployeeNotFoundError,
+    LeaveTypeNotFoundError,
+)
+from apps.leave.domain.repositories import (
+    LeaveBalanceAdjustmentRepository,
+    LeaveBalanceRepository,
+    LeaveRequestRepository,
+    LeaveTypeRepository,
+)
 from shared_kernel.application.unit_of_work import UnitOfWork
 from shared_kernel.infrastructure.uuid7 import generate_uuid7
 
@@ -28,11 +41,19 @@ class LeaveBalanceService:
         leave_type_repository: LeaveTypeRepository,
         leave_request_repository: LeaveRequestRepository,
         unit_of_work: UnitOfWork,
+        employee_lookup: EmployeeLookupPort | None = None,
+        balance_adjustment_repository: LeaveBalanceAdjustmentRepository | None = None,
     ) -> None:
         self._balances = leave_balance_repository
         self._leave_types = leave_type_repository
         self._requests = leave_request_repository
         self._uow = unit_of_work
+        # Both optional (default None), same backward-compatibility shape
+        # EmployeeQueryService's own user_lookup param already established
+        # — only adjust_balance (Phase 13) needs either one; every other
+        # method on this class predates and is untouched by that feature.
+        self._employees = employee_lookup
+        self._adjustments = balance_adjustment_repository
 
     # --- reads ------------------------------------------------------
     def get_balance(
@@ -132,3 +153,76 @@ class LeaveBalanceService:
             return
         with self._uow:
             self._balances.update(balance.decrease_used_days(amount))
+
+    # --- Leave Balance Adjustment / Opening (Phase 13, leave.manage_leave) --
+    def adjust_balance(self, request: AdjustLeaveBalanceRequest) -> LeaveBalanceAdjustmentResponse:
+        """One upsert write path for both named Phase 13 features — see
+        `AdjustLeaveBalanceRequest`'s docstring. Always writes an immutable
+        audit row via `LeaveBalanceAdjustmentRepository`, whichever branch
+        runs, so every entitlement/used/carried-forward change HR ever
+        makes outside the normal apply/approve/cancel flow is traceable
+        (who, when, what it was before, what it became, why)."""
+        if self._employees is not None and not self._employees.employee_exists(request.employee_id):
+            raise LeaveEmployeeNotFoundError()
+        leave_type = self._leave_types.get_by_id(request.leave_type_id)
+        if leave_type is None:
+            raise LeaveTypeNotFoundError()
+        if request.entitled_days < 0 or request.used_days < 0 or request.carried_forward_days < 0:
+            raise InvalidLeaveBalanceAdjustmentError()
+
+        existing = self._balances.get_by_employee_leave_type_year(
+            employee_id=request.employee_id, leave_type_id=request.leave_type_id, year=request.year
+        )
+
+        if existing is None:
+            adjustment_type = LeaveBalanceAdjustmentType.OPENING
+            previous_entitled = previous_used = previous_carried_forward = Decimal("0")
+            new_balance = LeaveBalance(
+                id=generate_uuid7(),
+                employee_id=request.employee_id,
+                leave_type_id=request.leave_type_id,
+                year=request.year,
+                entitled_days=request.entitled_days,
+                used_days=request.used_days,
+                carried_forward_days=request.carried_forward_days,
+            )
+            with self._uow:
+                self._balances.create(new_balance)
+        else:
+            adjustment_type = LeaveBalanceAdjustmentType.ADJUSTMENT
+            previous_entitled = existing.entitled_days
+            previous_used = existing.used_days
+            previous_carried_forward = existing.carried_forward_days
+            updated_balance = LeaveBalance(
+                id=existing.id,
+                employee_id=existing.employee_id,
+                leave_type_id=existing.leave_type_id,
+                year=existing.year,
+                entitled_days=request.entitled_days,
+                used_days=request.used_days,
+                carried_forward_days=request.carried_forward_days,
+            )
+            with self._uow:
+                self._balances.update(updated_balance)
+
+        adjustment = LeaveBalanceAdjustment(
+            id=generate_uuid7(),
+            employee_id=request.employee_id,
+            leave_type_id=request.leave_type_id,
+            year=request.year,
+            adjustment_type=adjustment_type,
+            previous_entitled_days=previous_entitled,
+            previous_used_days=previous_used,
+            previous_carried_forward_days=previous_carried_forward,
+            new_entitled_days=request.entitled_days,
+            new_used_days=request.used_days,
+            new_carried_forward_days=request.carried_forward_days,
+            reason=request.reason,
+        )
+        created_at = datetime.now(timezone.utc)
+        if self._adjustments is not None:
+            with self._uow:
+                self._adjustments.create(adjustment, created_by=request.adjusted_by)
+        return leave_balance_adjustment_to_response(
+            adjustment, adjusted_by=request.adjusted_by, created_at=created_at
+        )

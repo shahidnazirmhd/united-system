@@ -2,16 +2,25 @@
 from __future__ import annotations
 
 from src.auth.account_linking import AccountLinkingService
+from src.auth.approval_decision import ApprovalDecisionService
 from src.auth.leave_application import LeaveApplicationService
 from src.handlers import help_handler
 from src.handlers.context import HandlerContext
-from tests.fakes import FakeBotAPIClient, FakeEmployeesEndpoint, FakeLeaveEndpoint, FakeRedis, FakeTelegramUpdate
+from tests.fakes import (
+    FakeApprovalsEndpoint,
+    FakeBotAPIClient,
+    FakeEmployeesEndpoint,
+    FakeLeaveEndpoint,
+    FakeRedis,
+    FakeTelegramUpdate,
+)
 
 
 async def test_help_replies_with_command_list():
     bot = FakeBotAPIClient()
     employees = FakeEmployeesEndpoint()
     leave = FakeLeaveEndpoint()
+    approvals = FakeApprovalsEndpoint()
     ctx = HandlerContext(
         update=FakeTelegramUpdate(text="/help"),
         bot=bot,
@@ -19,6 +28,8 @@ async def test_help_replies_with_command_list():
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, FakeRedis()),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
 
     await help_handler.handle_help(ctx)

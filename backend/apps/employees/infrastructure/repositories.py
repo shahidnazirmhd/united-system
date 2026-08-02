@@ -16,7 +16,7 @@ from datetime import datetime
 from django.db.models import F
 
 from apps.employees.domain.entities import Department, Employee, EmployeeLinkToken
-from apps.employees.domain.enums import EmployeeStatus, EmploymentType
+from apps.employees.domain.enums import EmployeeCurrentStatus, EmployeeStatus, EmploymentType
 from apps.employees.domain.repositories import (
     DepartmentRepository,
     EmployeeLinkTokenRepository,
@@ -51,13 +51,17 @@ def _employee_to_domain(record: EmployeeRecord) -> Employee:
             job_title=record.job_title,
             employment_type=EmploymentType(record.employment_type),
             date_of_joining=record.date_of_joining,
-            termination_date=record.termination_date,
+            last_working_date=record.last_working_date,  # round 15 item 9
         ),
         status=EmployeeStatus(record.employment_status),
         telegram_user_id=record.telegram_user_id,
         telegram_chat_id=record.telegram_chat_id,
         telegram_username=record.telegram_username,
         telegram_linked_at=record.telegram_linked_at,
+        current_status=EmployeeCurrentStatus(record.current_status),
+        status_before_leave=EmployeeCurrentStatus(record.status_before_leave)
+        if record.status_before_leave
+        else None,
     )
 
 
@@ -96,12 +100,14 @@ class DjangoEmployeeRepository(DjangoBaseRepository[EmployeeRecord, Employee], E
             "job_title": entity.employment_info.job_title,
             "employment_type": entity.employment_info.employment_type.value,
             "date_of_joining": entity.employment_info.date_of_joining,
-            "termination_date": entity.employment_info.termination_date,
+            "last_working_date": entity.employment_info.last_working_date,  # round 15 item 9
             "employment_status": entity.status.value,
             "telegram_user_id": entity.telegram_user_id,
             "telegram_chat_id": entity.telegram_chat_id,
             "telegram_username": entity.telegram_username,
             "telegram_linked_at": entity.telegram_linked_at,
+            "current_status": entity.current_status.value,
+            "status_before_leave": entity.status_before_leave.value if entity.status_before_leave else None,
         }
 
     def get_by_employee_code(self, employee_code: str) -> Employee | None:
@@ -133,13 +139,35 @@ class DjangoEmployeeRepository(DjangoBaseRepository[EmployeeRecord, Employee], E
         return next_employee_code()
 
 
-class DjangoDepartmentRepository(DepartmentRepository):
-    def get_by_id(self, department_id: uuid.UUID) -> Department | None:
-        record = DepartmentRecord.objects.filter(id=department_id).first()
-        return _department_to_domain(record) if record is not None else None
+class DjangoDepartmentRepository(DjangoBaseRepository[DepartmentRecord, Department], DepartmentRepository):
+    """Phase 12 (Department CRUD) — now built on the same generic
+    `DjangoBaseRepository` `DjangoEmployeeRepository` uses above, instead of
+    the two hand-written lookup methods this class started with. Base
+    ordering `(DjangoBaseRepository[...], DepartmentRepository)` matches
+    `DjangoEmployeeRepository`'s own MRO exactly — see that base class's
+    docstring for why the order must agree across every module."""
 
-    def exists(self, department_id: uuid.UUID) -> bool:
-        return DepartmentRecord.objects.filter(id=department_id).exists()
+    model = DepartmentRecord
+
+    def _to_entity(self, record: DepartmentRecord) -> Department:
+        return _department_to_domain(record)
+
+    def _to_record_kwargs(self, entity: Department) -> dict[str, object]:
+        return {
+            "name": entity.name,
+            "code": entity.code,
+            "parent_department_id": entity.parent_department_id,
+            "head_employee_id": entity.head_employee_id,
+            "is_active": entity.is_active,
+        }
+
+    def exists_with_code(self, code: str) -> bool:
+        return self.model.objects.filter(code=code).exists()
+
+    def get_by_ids(self, ids: frozenset[uuid.UUID]) -> list[Department]:
+        if not ids:
+            return []
+        return [self._to_entity(record) for record in self.model.objects.filter(id__in=ids)]
 
 
 def _employee_link_token_to_domain(record: EmployeeLinkTokenRecord) -> EmployeeLinkToken:

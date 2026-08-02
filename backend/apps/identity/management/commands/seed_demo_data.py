@@ -2,7 +2,7 @@
 DEPLOYMENT_DEMO_GUIDE.md at the repo root.
 
 Why this exists: `create_admin_user` (this same folder) already does the
-"create the first HR Admin" half of this, but it's a one-shot interactive
+"create the first Admin" half of this, but it's a one-shot interactive
 command meant to be run via a shell — and Render's free tier (the guide's
 target host) gives neither SSH/shell access nor a pre-deploy-command hook
 (both are paid-only features there). The only code Render's free tier lets
@@ -39,7 +39,7 @@ from shared_kernel.infrastructure.django_unit_of_work import DjangoUnitOfWork
 
 
 class Command(BaseCommand):
-    help = "Idempotently seeds a demo Department + HR Admin user from env vars (temporary-deployment bootstrap)."
+    help = "Idempotently seeds a demo Department + Admin user from env vars (temporary-deployment bootstrap)."
 
     def handle(self, *args, **options) -> None:
         self._seed_department()
@@ -82,10 +82,10 @@ class Command(BaseCommand):
             self.stdout.write(f"Admin '{email}' already exists — skipped.")
             return
 
-        hr_admin_role = role_repository.get_by_name("HR Admin")
-        if hr_admin_role is None:
-            self.stdout.write(self.style.WARNING("'HR Admin' role not found — did `migrate` run first?"))
+        admin_role = role_repository.get_by_name("Admin")
+        if admin_role is None:
+            self.stdout.write(self.style.WARNING("'Admin' role not found — did `migrate` run first?"))
             return
 
-        user_repository.assign_role(user.id, hr_admin_role.id, assigned_by=None)
-        self.stdout.write(self.style.SUCCESS(f"Seeded HR Admin '{email}' (id={user.id})."))
+        user_repository.assign_role(user.id, admin_role.id, assigned_by=None)
+        self.stdout.write(self.style.SUCCESS(f"Seeded Admin '{email}' (id={user.id})."))

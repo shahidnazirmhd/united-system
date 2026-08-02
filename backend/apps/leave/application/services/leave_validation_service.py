@@ -25,10 +25,13 @@ from apps.leave.application.ports import EmployeeLookupPort
 from apps.leave.domain.entities import LeaveType
 from apps.leave.domain.exceptions import (
     DuplicateLeaveRequestError,
+    EmployeeNotEligibleForLeaveError,
     InsufficientLeaveBalanceError,
     InvalidLeaveDateRangeError,
     LeaveEmployeeNotFoundError,
     LeaveTypeNotFoundError,
+    ManagerNotLinkedToTelegramError,
+    NoManagerAssignedError,
     OverlappingLeaveRequestError,
     PastLeaveStartDateError,
 )
@@ -54,6 +57,35 @@ class LeaveValidationService:
     def validate_employee_exists(self, employee_id: uuid.UUID) -> None:
         if not self._employees.employee_exists(employee_id):
             raise LeaveEmployeeNotFoundError()
+
+    def validate_employee_eligible_for_leave(self, employee_id: uuid.UUID) -> None:
+        """Round 14 item 6 — "Employee should not be allowed to apply
+        leave when their status is: Not Joined / Currently on leave /
+        Terminated / Resigned." The "currently on leave" case is enforced
+        separately, against the specific dates being requested, by
+        `validate_no_overlap` below (an employee already approved for a
+        *different, non-overlapping* leave may still apply for a new one)
+        — this method only checks the NOT_JOINED/TERMINATED/RESIGNED cases,
+        via `EmployeeLookupPort.is_employee_eligible_for_leave`."""
+        if not self._employees.is_employee_eligible_for_leave(employee_id):
+            raise EmployeeNotEligibleForLeaveError()
+
+    def validate_manager_available_for_approval(self, employee_id: uuid.UUID) -> None:
+        """Approval Engine (Phase 9) precondition: a leave request must
+        have a resolvable, notifiable level-1 approver before it may be
+        submitted at all. Two distinct failure modes, each with its own
+        exact, user-facing message (see domain/exceptions.py):
+        no manager assigned at all, or a manager who is assigned but
+        hasn't linked Telegram yet (and so could never be notified of, or
+        act on, the request). Called from `apply_leave` before the
+        `LeaveRequest` is created — same "abort before creating anything"
+        shape as every other validate_* method here.
+        """
+        manager_id = self._employees.get_manager_employee_id(employee_id)
+        if manager_id is None:
+            raise NoManagerAssignedError()
+        if not self._employees.is_employee_linked_to_telegram(manager_id):
+            raise ManagerNotLinkedToTelegramError()
 
     def validate_and_get_leave_type(self, leave_type_id: uuid.UUID) -> LeaveType:
         leave_type = self._leave_types.get_by_id(leave_type_id)

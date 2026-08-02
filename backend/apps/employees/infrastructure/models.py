@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from django.db import models
 
-from apps.employees.domain.enums import EmployeeStatus, EmploymentType
+from apps.employees.domain.enums import EmployeeCurrentStatus, EmployeeStatus, EmploymentType
 from shared_kernel.infrastructure.base_models import BaseModel, SoftDeleteModel
 
 
@@ -85,7 +85,10 @@ class EmployeeRecord(BaseModel, SoftDeleteModel):
     phone_number = models.CharField(max_length=20, null=True, blank=True)
 
     date_of_joining = models.DateField()
-    termination_date = models.DateField(null=True, blank=True)
+    # Round 15 item 9 — renamed from `termination_date`; used for both
+    # resignation and termination cases (see domain/value_objects.py
+    # EmploymentInformation's docstring).
+    last_working_date = models.DateField(null=True, blank=True)
     employment_status = models.CharField(
         max_length=20, choices=EmployeeStatus.choices(), default=EmployeeStatus.ACTIVE.value
     )
@@ -111,18 +114,30 @@ class EmployeeRecord(BaseModel, SoftDeleteModel):
     telegram_username = models.CharField(max_length=100, null=True, blank=True)
     telegram_linked_at = models.DateTimeField(null=True, blank=True)
 
+    # --- Current Status (round 14 item 8) --------------------------------
+    # Deliberately separate from `employment_status` above — see
+    # domain/enums.py EmployeeCurrentStatus's docstring for the full
+    # reasoning on why both fields exist.
+    current_status = models.CharField(
+        max_length=20, choices=EmployeeCurrentStatus.choices(), default=EmployeeCurrentStatus.NOT_JOINED.value
+    )
+    status_before_leave = models.CharField(
+        max_length=20, choices=EmployeeCurrentStatus.choices(), null=True, blank=True
+    )
+
     class Meta:
         db_table = "employees_employees"
         indexes = [
             models.Index(fields=["employment_status"], name="employees_status_idx"),
             models.Index(fields=["department"], name="employees_department_idx"),
             models.Index(fields=["telegram_user_id"], name="employees_telegram_tguid_idx"),
+            models.Index(fields=["current_status"], name="employees_current_status_idx"),
         ]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(termination_date__isnull=True)
-                | models.Q(termination_date__gte=models.F("date_of_joining")),
-                name="employees_termination_after_joining",
+                check=models.Q(last_working_date__isnull=True)
+                | models.Q(last_working_date__gte=models.F("date_of_joining")),
+                name="employees_last_working_date_after_joining",
             ),
         ]
 

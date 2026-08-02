@@ -47,7 +47,6 @@ class UserSummaryResponse:
     id: uuid.UUID
     email: str
     is_active: bool
-    is_system_account: bool
     employee_id: uuid.UUID | None
     roles: tuple[RoleSummary, ...]
     permission_codes: frozenset[str]
@@ -57,8 +56,35 @@ class UserSummaryResponse:
 class CreateUserRequest:
     email: str
     password: str
-    is_system_account: bool = False
     created_by: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class UserListQuery:
+    """Phase 12 (User Management) — mirrors
+    `apps.employees.application.dtos.EmployeeListQuery`'s shape exactly."""
+
+    is_active: bool | None = None
+    search: str | None = None
+    ordering: tuple[str, ...] = ()
+    page: int = 1
+    page_size: int = 25
+
+
+@dataclass(frozen=True)
+class UpdateUserRequest:
+    """Phase 12 admin edit. Deliberately excludes password (the reset flow's
+    job) and roles (already has assign/revoke endpoints) and is_active
+    (its own activate/deactivate actions) — matching
+    `apps.employees.application.dtos.UpdateEmployeeRequest` keeping
+    status/telegram fields out of its own full-replace update for the
+    identical reason. `is_system_account` (Phase 12) was removed after being
+    found to have no functional effect anywhere in the system — see
+    migration 0005_remove_is_system_account's docstring."""
+
+    user_id: uuid.UUID
+    email: str
+    updated_by: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +101,37 @@ class RoleResponse:
     description: str
     is_system_role: bool
     permission_codes: frozenset[str]
+
+
+@dataclass(frozen=True)
+class UpdateRoleRequest:
+    """Full-replace update of a role's name/description/permission set —
+    backs PATCH /auth/roles/{id}/. `permission_codes` is the *complete*
+    target set (mirrors CreateRoleRequest's own all-or-nothing shape, not
+    an add/remove diff) — the caller (Role Management UI) always sends every
+    checked permission, not just what changed, which is simpler for both
+    ends to reason about than a partial patch. Deliberately has no
+    `is_system_role` field — whether a role is a system role is decided once,
+    at creation (always False for anything created through this API; only
+    migration 0002/0006 ever set it True), never editable afterwards."""
+
+    role_id: uuid.UUID
+    name: str
+    description: str = ""
+    permission_codes: frozenset[str] = field(default_factory=frozenset)
+
+
+@dataclass(frozen=True)
+class DeleteRoleRequest:
+    role_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class PermissionResponse:
+    id: uuid.UUID
+    code: str
+    description: str
+    module: str
 
 
 @dataclass(frozen=True)

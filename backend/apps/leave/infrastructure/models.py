@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from django.db import models
 
-from apps.leave.domain.enums import LeaveRequestStatus
+from apps.leave.domain.enums import LeaveBalanceAdjustmentType, LeaveRequestStatus
 from shared_kernel.infrastructure.base_models import BaseModel
 
 
@@ -25,6 +25,10 @@ class LeaveTypeRecord(BaseModel):
     is_paid = models.BooleanField(default=True)
     requires_approval = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
+    # Round 14 items 6/8 — see domain/employee_status_mapping.py for why
+    # this is a plain, unconstrained string rather than a Django
+    # `choices=` field pointed at another module's enum.
+    maps_to_employee_status = models.CharField(max_length=20, null=True, blank=True)
 
     class Meta:
         db_table = "leave_types"
@@ -77,6 +81,14 @@ class LeaveRequestRecord(BaseModel):
     # reporting and it's what balance restoration reads on cancel, without
     # needing to re-derive it from start/end every time.
     total_days = models.DecimalField(max_digits=5, decimal_places=2)
+    # Round 14 item 6 — see domain/entities.py LeaveRequest.working_days's
+    # docstring for why this is computed once, at apply time, and stored
+    # rather than recomputed on every read.
+    working_days = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # Round 14 item 2 — snapshot of available balance at apply time.
+    # Nullable: legacy rows created before this column existed have no
+    # snapshot to show.
+    balance_at_application = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     reason = models.TextField(null=True, blank=True)
     status = models.CharField(
         max_length=20, choices=LeaveRequestStatus.choices(), default=LeaveRequestStatus.PENDING.value
@@ -106,3 +118,40 @@ class LeaveRequestRecord(BaseModel):
 
     def __str__(self) -> str:
         return f"leave-request employee:{self.employee_id} {self.start_date}..{self.end_date} ({self.status})"
+
+
+class LeaveBalanceAdjustmentRecord(BaseModel):
+    """Immutable audit trail for Phase 13's Leave Balance Adjustment/Opening
+    feature — one row per `LeaveBalanceService.adjust_balance()` call, ever.
+    Nothing in this module updates or deletes a row here once written
+    (`LeaveBalanceAdjustmentRepository`'s own ABC deliberately exposes no
+    update/delete methods at all — see domain/repositories.py). `created_by`
+    (inherited from `BaseModel`) is who performed the adjustment; `created_at`
+    is when.
+    """
+
+    employee_id = models.UUIDField()
+    leave_type = models.ForeignKey(LeaveTypeRecord, on_delete=models.RESTRICT, related_name="balance_adjustments")
+    year = models.SmallIntegerField()
+    adjustment_type = models.CharField(max_length=20, choices=LeaveBalanceAdjustmentType.choices())
+    previous_entitled_days = models.DecimalField(max_digits=5, decimal_places=2)
+    previous_used_days = models.DecimalField(max_digits=5, decimal_places=2)
+    previous_carried_forward_days = models.DecimalField(max_digits=5, decimal_places=2)
+    new_entitled_days = models.DecimalField(max_digits=5, decimal_places=2)
+    new_used_days = models.DecimalField(max_digits=5, decimal_places=2)
+    new_carried_forward_days = models.DecimalField(max_digits=5, decimal_places=2)
+    reason = models.TextField()
+
+    class Meta:
+        db_table = "leave_balance_adjustments"
+        indexes = [
+            models.Index(
+                fields=["employee_id", "leave_type", "year"], name="leave_bal_adj_emp_yr_idx"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"balance-adjustment ({self.adjustment_type}) employee:{self.employee_id} "
+            f"type:{self.leave_type_id} year:{self.year}"
+        )

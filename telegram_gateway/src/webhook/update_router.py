@@ -14,7 +14,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from src.errors import GatewayError, friendly_message_for
-from src.handlers import leave_handlers, link_handler
+from src.handlers import approval_handlers, leave_handlers, link_handler
 from src.handlers.context import HandlerContext
 from src.handlers.registry import CommandRegistry
 from src.logging_config import log_event
@@ -35,14 +35,26 @@ class Dependencies:
     itself and the registry — constructed once at process start
     (main.py) and passed through, never re-created per request."""
 
-    __slots__ = ("bot", "linking", "employees", "leave", "leave_application")
+    __slots__ = (
+        "bot",
+        "linking",
+        "employees",
+        "leave",
+        "leave_application",
+        "approvals",
+        "approval_decision",
+    )
 
-    def __init__(self, *, bot, linking, employees, leave, leave_application) -> None:
+    def __init__(
+        self, *, bot, linking, employees, leave, leave_application, approvals, approval_decision
+    ) -> None:
         self.bot = bot
         self.linking = linking
         self.employees = employees
         self.leave = leave
         self.leave_application = leave_application
+        self.approvals = approvals
+        self.approval_decision = approval_decision
 
 
 async def route(update: TelegramUpdate, deps: Dependencies, registry: CommandRegistry) -> None:
@@ -60,6 +72,8 @@ async def route(update: TelegramUpdate, deps: Dependencies, registry: CommandReg
         employees=deps.employees,
         leave=deps.leave,
         leave_application=deps.leave_application,
+        approvals=deps.approvals,
+        approval_decision=deps.approval_decision,
     )
 
     log_event(
@@ -132,6 +146,16 @@ async def _route_message(ctx: HandlerContext, registry: CommandRegistry) -> None
     # anyway) and before falling through to "unknown command."
     if await ctx.leave_application.is_active(ctx.telegram_user_id):
         await leave_handlers.handle_apply_leave_free_text(ctx)
+        return
+
+    # Approval Engine (Phase 9) — the optional-comment step following an
+    # Approve/Reject tap is likewise free text at every point, checked last
+    # (after OTP and Apply Leave, both of which take priority for the same
+    # reason Apply Leave already yields to OTP: a chat can only meaningfully
+    # be mid-way through one conversation at a time, and this is checked
+    # last simply because it was added last).
+    if await ctx.approval_decision.is_active(ctx.telegram_user_id):
+        await approval_handlers.handle_approval_comment_free_text(ctx)
         return
 
     await ctx.reply(_UNKNOWN_COMMAND_REPLY)

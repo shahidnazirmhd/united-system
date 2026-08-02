@@ -4,9 +4,17 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+import pytest
+
+from apps.leave.application.dtos import AdjustLeaveBalanceRequest
 from apps.leave.application.services.leave_balance_service import LeaveBalanceService
 from apps.leave.domain.entities import LeaveBalance, LeaveRequest, LeaveType
-from apps.leave.domain.enums import LeaveRequestStatus
+from apps.leave.domain.enums import LeaveBalanceAdjustmentType, LeaveRequestStatus
+from apps.leave.domain.exceptions import (
+    InvalidLeaveBalanceAdjustmentError,
+    LeaveEmployeeNotFoundError,
+    LeaveTypeNotFoundError,
+)
 from shared_kernel.application.unit_of_work import UnitOfWork
 from shared_kernel.domain.value_objects import DateRange
 
@@ -114,6 +122,38 @@ class FakeLeaveRequestRepository:
 
     def exists(self, entity_id):
         raise NotImplementedError
+
+
+class FakeEmployeeLookupPort:
+    def __init__(self, known_employee_ids: set[uuid.UUID] | None = None):
+        self._known = known_employee_ids or set()
+
+    def employee_exists(self, employee_id):
+        return employee_id in self._known
+
+    def get_employee_id_by_user_id(self, user_id):
+        raise NotImplementedError
+
+    def get_employee_id_by_telegram_user_id(self, telegram_user_id):
+        raise NotImplementedError
+
+    def get_manager_employee_id(self, employee_id):
+        raise NotImplementedError
+
+    def is_employee_linked_to_telegram(self, employee_id):
+        raise NotImplementedError
+
+
+class FakeLeaveBalanceAdjustmentRepository:
+    def __init__(self):
+        self.created: list = []
+
+    def create(self, adjustment, *, created_by):
+        self.created.append((adjustment, created_by))
+        return adjustment
+
+    def list_by_employee(self, *, employee_id, leave_type_id=None, year=None):
+        return [a for a, _ in self.created if a.employee_id == employee_id]
 
 
 def _leave_type(**overrides) -> LeaveType:
@@ -254,3 +294,137 @@ def test_decrease_used_days_restores_balance_on_cancel_of_approved() -> None:
 
     updated = balances.get_by_employee_leave_type_year(employee_id=employee_id, leave_type_id=leave_type.id, year=2026)
     assert updated.used_days == Decimal("0")
+
+
+# --- adjust_balance (Phase 13: Leave Balance Adjustment / Opening) --------
+
+
+def _adjustment_service(*, balances=None, leave_types, known_employee_ids, adjustments=None):
+    return (
+        LeaveBalanceService(
+            leave_balance_repository=FakeLeaveBalanceRepository(balances or []),
+            leave_type_repository=FakeLeaveTypeRepository(leave_types),
+            leave_request_repository=FakeLeaveRequestRepository(),
+            unit_of_work=FakeUnitOfWork(),
+            employee_lookup=FakeEmployeeLookupPort(known_employee_ids),
+            balance_adjustment_repository=adjustments,
+        ),
+        adjustments,
+    )
+
+
+def test_adjust_balance_opens_a_new_row_when_none_exists() -> None:
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    adjustments = FakeLeaveBalanceAdjustmentRepository()
+    service, _ = _adjustment_service(
+        leave_types=[leave_type], known_employee_ids={employee_id}, adjustments=adjustments
+    )
+
+    result = service.adjust_balance(
+        AdjustLeaveBalanceRequest(
+            employee_id=employee_id,
+            leave_type_id=leave_type.id,
+            year=2026,
+            entitled_days=Decimal("18"),
+            used_days=Decimal("0"),
+            carried_forward_days=Decimal("2"),
+            reason="New year opening entitlement",
+            adjusted_by=uuid.uuid4(),
+        )
+    )
+
+    assert result.adjustment_type == LeaveBalanceAdjustmentType.OPENING.value
+    assert result.previous_entitled_days == Decimal("0")
+    assert result.new_entitled_days == Decimal("18")
+    assert len(adjustments.created) == 1
+
+
+def test_adjust_balance_updates_an_existing_row_and_records_previous_values() -> None:
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    existing = LeaveBalance(
+        id=uuid.uuid4(),
+        employee_id=employee_id,
+        leave_type_id=leave_type.id,
+        year=2026,
+        entitled_days=Decimal("20"),
+        used_days=Decimal("5"),
+        carried_forward_days=Decimal("0"),
+    )
+    adjustments = FakeLeaveBalanceAdjustmentRepository()
+    service, _ = _adjustment_service(
+        balances=[existing], leave_types=[leave_type], known_employee_ids={employee_id}, adjustments=adjustments
+    )
+
+    result = service.adjust_balance(
+        AdjustLeaveBalanceRequest(
+            employee_id=employee_id,
+            leave_type_id=leave_type.id,
+            year=2026,
+            entitled_days=Decimal("25"),
+            used_days=Decimal("5"),
+            carried_forward_days=Decimal("0"),
+            reason="Correcting a data-entry error",
+            adjusted_by=uuid.uuid4(),
+        )
+    )
+
+    assert result.adjustment_type == LeaveBalanceAdjustmentType.ADJUSTMENT.value
+    assert result.previous_entitled_days == Decimal("20")
+    assert result.new_entitled_days == Decimal("25")
+
+
+def test_adjust_balance_rejects_a_negative_value() -> None:
+    employee_id, leave_type = uuid.uuid4(), _leave_type()
+    service, _ = _adjustment_service(leave_types=[leave_type], known_employee_ids={employee_id})
+
+    with pytest.raises(InvalidLeaveBalanceAdjustmentError):
+        service.adjust_balance(
+            AdjustLeaveBalanceRequest(
+                employee_id=employee_id,
+                leave_type_id=leave_type.id,
+                year=2026,
+                entitled_days=Decimal("-1"),
+                used_days=Decimal("0"),
+                carried_forward_days=Decimal("0"),
+                reason="Invalid",
+                adjusted_by=None,
+            )
+        )
+
+
+def test_adjust_balance_rejects_an_unknown_employee() -> None:
+    leave_type = _leave_type()
+    service, _ = _adjustment_service(leave_types=[leave_type], known_employee_ids=set())
+
+    with pytest.raises(LeaveEmployeeNotFoundError):
+        service.adjust_balance(
+            AdjustLeaveBalanceRequest(
+                employee_id=uuid.uuid4(),
+                leave_type_id=leave_type.id,
+                year=2026,
+                entitled_days=Decimal("10"),
+                used_days=Decimal("0"),
+                carried_forward_days=Decimal("0"),
+                reason="Test",
+                adjusted_by=None,
+            )
+        )
+
+
+def test_adjust_balance_rejects_an_unknown_leave_type() -> None:
+    employee_id = uuid.uuid4()
+    service, _ = _adjustment_service(leave_types=[], known_employee_ids={employee_id})
+
+    with pytest.raises(LeaveTypeNotFoundError):
+        service.adjust_balance(
+            AdjustLeaveBalanceRequest(
+                employee_id=employee_id,
+                leave_type_id=uuid.uuid4(),
+                year=2026,
+                entitled_days=Decimal("10"),
+                used_days=Decimal("0"),
+                carried_forward_days=Decimal("0"),
+                reason="Test",
+                adjusted_by=None,
+            )
+        )

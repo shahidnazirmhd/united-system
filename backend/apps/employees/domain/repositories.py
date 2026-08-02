@@ -59,13 +59,31 @@ class EmployeeRepository(BaseRepository[Employee]):
         raise NotImplementedError
 
 
-class DepartmentRepository(ABC):
+class DepartmentRepository(BaseRepository[Department]):
+    """Phase 12 (Department CRUD): extended from a plain `get_by_id`/`exists`
+    lookup-only ABC to the full `BaseRepository` contract, matching
+    `EmployeeRepository`'s own extension of the same base — see
+    `infrastructure/repositories.py`'s `DjangoDepartmentRepository` for why
+    this needed no schema change (`DepartmentRecord` already had every
+    column Create/Update needs; only the read-only *behavior* around it
+    was missing).
+    """
+
     @abstractmethod
-    def get_by_id(self, department_id: uuid.UUID) -> Department | None:
+    def exists_with_code(self, code: str) -> bool:
         raise NotImplementedError
 
     @abstractmethod
-    def exists(self, department_id: uuid.UUID) -> bool:
+    def get_by_ids(self, ids: frozenset[uuid.UUID]) -> list[Department]:
+        """Batch fetch by id — backs `EmployeeQueryService.list()`'s
+        `department_name` enrichment (bugfix: the Employee List table's
+        Department column was always blank, since `list()` previously never
+        resolved this field at all). One query for every *distinct*
+        department id on the current page of results, not one query per
+        employee row — the same N+1-avoidance concern `list()`'s own
+        docstring already raised, solved by batching instead of skipping the
+        resolution entirely. Mirrors `PermissionRepository.get_by_codes()`'s
+        identical batch-lookup shape in `apps.identity`."""
         raise NotImplementedError
 
 

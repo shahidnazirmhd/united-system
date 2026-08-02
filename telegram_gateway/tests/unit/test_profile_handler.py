@@ -5,11 +5,13 @@ import pytest
 
 from src.api_client.endpoints.employees import EmployeeProfile
 from src.auth.account_linking import AccountLinkingService
+from src.auth.approval_decision import ApprovalDecisionService
 from src.auth.leave_application import LeaveApplicationService
 from src.errors import TelegramAPIError
 from src.handlers import profile_handler
 from src.handlers.context import HandlerContext
 from tests.fakes import (
+    FakeApprovalsEndpoint,
     FakeBotAPIClient,
     FakeCallbackMessage,
     FakeCallbackQuery,
@@ -24,12 +26,14 @@ _PROFILE = EmployeeProfile(
     id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
     work_email="ada@example.com", phone_number=None, department_name="Engineering", manager_name=None,
     employment_type="full_time", date_of_joining="2024-01-15", status="active",
+    current_status="working",
     is_linked_to_telegram=True, telegram_username="ada",
 )
 
 
 def _build_context(update, employees, *, bot=None) -> HandlerContext:
     leave = FakeLeaveEndpoint()
+    approvals = FakeApprovalsEndpoint()
     return HandlerContext(
         update=update,
         bot=bot or FakeBotAPIClient(),
@@ -37,6 +41,8 @@ def _build_context(update, employees, *, bot=None) -> HandlerContext:
         employees=employees,
         leave=leave,
         leave_application=LeaveApplicationService(leave, FakeRedis()),
+        approvals=approvals,
+        approval_decision=ApprovalDecisionService(approvals, FakeRedis()),
     )
 
 

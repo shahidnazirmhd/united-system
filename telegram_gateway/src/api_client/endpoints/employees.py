@@ -34,6 +34,13 @@ class EmployeeProfile:
     employment_type: str
     date_of_joining: str
     status: str
+    # Round 15 items 7/8 — the employee's day-to-day working status
+    # (not_joined/working/sick_leave/annual_leave/terminated/resigned),
+    # distinct from `status` above (system-access status). Already returned
+    # by `/api/v1/employees/telegram/profile/` (the full
+    # EmployeeResponseSerializer) with no backend change needed — see
+    # formatting/common.py's `format_current_status_label` docstring.
+    current_status: str
     is_linked_to_telegram: bool
     telegram_username: str | None
 
@@ -58,6 +65,7 @@ def _parse_employee_profile(data: dict) -> EmployeeProfile:
         employment_type=data["employment_type"],
         date_of_joining=data["date_of_joining"],
         status=data["status"],
+        current_status=data.get("current_status", "not_joined"),
         is_linked_to_telegram=data.get("is_linked_to_telegram", False),
         telegram_username=data.get("telegram_username"),
     )

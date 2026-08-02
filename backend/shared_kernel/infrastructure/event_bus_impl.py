@@ -29,7 +29,29 @@ class InProcessEventBus(EventBus):
         handlers = self._handlers.get(type(event), [])
         logger.debug("Publishing %s to %d handler(s)", type(event).__name__, len(handlers))
         for handler in handlers:
-            handler(event)
+            try:
+                handler(event)
+            except Exception:
+                # Fault isolation between publisher and subscriber: a
+                # subscriber's own business-rule failure (e.g. Leave's
+                # handle_approval_decided raising leave_request_not_found
+                # for a subject_id it doesn't recognize) must never surface
+                # as a failure of whatever call published the event — the
+                # publishing module (e.g. apps.approvals, which has no idea
+                # Leave or any other subscriber even exists) already
+                # committed its own write and returned its own response by
+                # this point. This is also the behavior any real
+                # asynchronous replacement (Celery-task-per-handler, this
+                # class's own docstring anticipates one) would have for
+                # free, since a failed task there doesn't fail the
+                # publisher's request either — logging here keeps this
+                # synchronous implementation's failure mode consistent with
+                # that eventual one, rather than a synchronous-only quirk.
+                logger.exception(
+                    "Event handler %r raised while handling %s — isolated, event not redelivered.",
+                    handler,
+                    type(event).__name__,
+                )
 
     def subscribe(self, event_type: type[DomainEvent], handler: EventHandler) -> None:
         self._handlers[event_type].append(handler)

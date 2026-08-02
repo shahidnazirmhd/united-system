@@ -53,9 +53,14 @@ def format_leave_type_button_label(leave_type: LeaveType) -> str:
 
 def format_leave_request_summary_line(request: LeaveRequest) -> str:
     """One line per request — used both in the /leave_history list and as
-    button labels in the /cancel_leave selection keyboard."""
+    button labels in the /cancel_leave selection keyboard. Round 15 item 2:
+    shows both total calendar days and working days (excludes the
+    configured week-off/holidays)."""
     name = field_or_placeholder(request.leave_type_name)
-    return f"{name}: {request.start_date} → {request.end_date} ({request.total_days}d) — {_status_label(request.status)}"
+    return (
+        f"{name}: {request.start_date} → {request.end_date} "
+        f"({request.total_days}d total, {request.working_days}d working) — {_status_label(request.status)}"
+    )
 
 
 def format_leave_history(page: LeaveHistoryPage) -> str:
@@ -73,7 +78,8 @@ def format_leave_request_detail(request: LeaveRequest) -> str:
     lines = [
         "*Leave Request Details*",
         f"🏷️ Type: {field_or_placeholder(request.leave_type_name)}",
-        f"📅 Dates: {request.start_date} → {request.end_date} ({request.total_days} day(s))",
+        f"📅 Dates: {request.start_date} → {request.end_date}",
+        f"🗓️ Total days: {request.total_days} · Working days: {request.working_days}",
         f"📋 Status: {_status_label(request.status)}",
         f"📝 Reason: {field_or_placeholder(request.reason)}",
     ]
@@ -150,13 +156,40 @@ def format_apply_leave_confirmation(state: LeaveApplicationState) -> str:
 def format_leave_applied(request: LeaveRequest) -> str:
     return (
         f"✅ Your leave request has been submitted and is *{_status_label(request.status)}*.\n"
-        f"📅 {request.start_date} → {request.end_date} ({request.total_days} day(s))\n"
+        f"📅 {request.start_date} → {request.end_date}\n"
+        f"🗓️ Total days: {request.total_days} · Working days: {request.working_days}\n"
         f"ID: `{request.id}`"
     )
 
 
 def format_leave_cancelled(request: LeaveRequest) -> str:
     return f"🚫 Leave request `{request.id}` has been cancelled."
+
+
+def format_leave_cancelled_push(*, subject_summary: str, was_approved: bool = True) -> str:
+    """Round 15 item 6 / round 17 item 3 — the server-pushed notice sent
+    whenever a leave request is cancelled (by the employee, HR, or a
+    manager), as opposed to `format_leave_cancelled` above, which is the
+    synchronous reply to the employee's own /cancel_leave action in this
+    same chat. `subject_summary` is the already-composed sentence from
+    `LeaveRequestService._notify_leave_cancelled` (leave type, dates, total
+    + working days — round 15 item 2), escaped here since (unlike
+    `format_leave_history`'s per-line escaping) this is the only place this
+    particular string is rendered.
+
+    `was_approved` (round 17 item 3) picks the right wording for each
+    action: a leave that was already APPROVED had its balance restored, so
+    the recipient is told that explicitly; a still-PENDING request instead
+    had its open approval process closed (round 17 item 2) — telling the
+    recipient the balance line would be misleading, since nothing was ever
+    deducted for a request that was never approved."""
+    if was_approved:
+        return f"🚫 *Your approved leave has been cancelled.*\n{escape_markdown(subject_summary)}"
+    return (
+        "🚫 *Your leave request has been cancelled.*\n"
+        "Its pending approval process has been closed — no further action is needed.\n"
+        f"{escape_markdown(subject_summary)}"
+    )
 
 
 def format_no_cancellable_requests() -> str:

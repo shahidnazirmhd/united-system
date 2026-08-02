@@ -34,7 +34,11 @@ def hr_admin_client():
     user = UserRecord.objects.create(
         email="hr.admin@example.com", password_hash=hasher.hash(_PASSWORD)
     )
-    hr_admin_role = RoleRecord.objects.get(name="HR Admin")  # seeded by identity's 0002 migration
+    # Seeded by identity's 0002 migration as "HR Admin", renamed to "Admin" by
+    # 0006_rename_admin_role_and_prune_system_roles.py (Role & Permission
+    # Management phase) — both migrations have already run by the time the
+    # test database is built.
+    hr_admin_role = RoleRecord.objects.get(name="Admin")
     UserRoleRecord.objects.create(user=user, role=hr_admin_role)
 
     client = APIClient()
@@ -137,13 +141,13 @@ def test_full_employee_lifecycle(hr_admin_client, department) -> None:
 
 # --- Self-service /me (Phase 7) -----------------------------------------
 # Proves the least-privilege gap fix: an employee with no
-# employees.view_employees grant — just the baseline "Employee" role, which
-# holds zero permissions (see apps/identity/migrations/0002_seed_system_roles.py)
-# — can still see their own record, and only their own.
+# employees.view_employees grant — just some ordinary role with zero
+# permissions (see the `zero_permission_role` fixture in the rootdir
+# conftest.py) — can still see their own record, and only their own.
 
 
 @pytest.fixture
-def employee_self_service_client(department):
+def employee_self_service_client(department, zero_permission_role):
     """A logged-in User with no employees.* permission at all, linked to a
     real EmployeeRecord via the reciprocal user_id/employee_id pair — the
     same shape Telegram auto-provisioning produces."""
@@ -151,8 +155,7 @@ def employee_self_service_client(department):
 
     hasher = DjangoPasswordHasher()
     user = UserRecord.objects.create(email="ada.self@example.com", password_hash=hasher.hash(_PASSWORD))
-    employee_role = RoleRecord.objects.get(name="Employee")  # seeded by identity's 0002 migration, zero permissions
-    UserRoleRecord.objects.create(user=user, role=employee_role)
+    UserRoleRecord.objects.create(user=user, role=zero_permission_role)
 
     employee_record = EmployeeRecord.objects.create(
         employee_code="EMP-000042",
@@ -203,11 +206,10 @@ def test_me_rejects_plain_get_employee_by_id_without_permission(employee_self_se
     assert response.status_code == 403
 
 
-def test_me_returns_not_found_when_user_has_no_linked_employee() -> None:
+def test_me_returns_not_found_when_user_has_no_linked_employee(zero_permission_role) -> None:
     hasher = DjangoPasswordHasher()
     user = UserRecord.objects.create(email="unlinked.user@example.com", password_hash=hasher.hash(_PASSWORD))
-    employee_role = RoleRecord.objects.get(name="Employee")
-    UserRoleRecord.objects.create(user=user, role=employee_role)
+    UserRoleRecord.objects.create(user=user, role=zero_permission_role)
 
     client = APIClient()
     login_response = client.post("/api/v1/auth/login/", {"email": user.email, "password": _PASSWORD}, format="json")
