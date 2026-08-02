@@ -59,6 +59,18 @@ the app label for Settings is `app_settings`, not `settings` — see
 `django.conf.settings` in log output, migration names, and `apps.get_model`
 calls; the URL prefix and Python package path are unaffected and remain
 `apps.settings`/`/api/v1/settings/`.
+
+`apps.dashboard` (Phase 14) is a pure read-aggregator with no database
+table of its own (no `models.py`, no `migrations/` package — the first such
+module here). It depends on `apps.employees`, `apps.leave`, and
+`apps.attendance` through its own read-only ports
+(`EmployeeStatisticsPort`/`LeaveStatisticsPort`/`HolidayLookupPort` in
+`apps.dashboard.application.ports`), the same "the consumer owns the port"
+rule every prior cross-module read in this codebase already follows — none
+of those three modules needed a single line changed to support it beyond
+each module's own additive `get_statistics`/`list_upcoming` read method
+(added because each module owns the decision of what its own statistics
+mean, not Dashboard).
 """
 from __future__ import annotations
 
@@ -70,6 +82,7 @@ ACTIVE_MODULES: list[str] = [
     "apps.approvals",
     "apps.settings",
     "apps.attendance",
+    "apps.dashboard",
     # Future HR modules are added here, one line each, e.g.:
     # "apps.payroll",
     # "apps.performance",
@@ -84,4 +97,5 @@ API_MODULE_URL_PREFIXES: dict[str, str] = {
     "approvals": "apps.approvals",
     "settings": "apps.settings",
     "attendance": "apps.attendance",
+    "dashboard": "apps.dashboard",
 }

@@ -4,6 +4,7 @@ minus any enrichment (Holiday has no related-entity names to resolve)."""
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from apps.attendance.application.dtos import HolidayListQuery, HolidayResponse
 from apps.attendance.application.mappers import holiday_to_response
@@ -24,6 +25,14 @@ class HolidayQueryService:
         if holiday is None:
             raise HolidayNotFoundError()
         return holiday_to_response(holiday)
+
+    def list_upcoming(self, *, limit: int = 5) -> list[HolidayResponse]:
+        """Phase 14 (Dashboard) — "today" is resolved here, not passed in by
+        the caller, matching every other "as of right now" read in this
+        codebase (e.g. `LeaveRequestService.get_statistics`'s own
+        `date.today()` call)."""
+        holidays = self._holidays.list_upcoming(from_date=date.today(), limit=limit)
+        return [holiday_to_response(h) for h in holidays]
 
     def list(self, query: HolidayListQuery) -> PageResult[HolidayResponse]:
         filters: dict[str, object] = {}

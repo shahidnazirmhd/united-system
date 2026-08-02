@@ -81,6 +81,10 @@ class LeaveRequestResponse:
     # else rather than adding an extra lookup no other caller needs.
     employee_name: str | None = None
     employee_code: str | None = None
+    # Phase 14 (Dashboard) — see `LeaveRequest.updated_at`'s docstring for
+    # why ordering by this column (via `LeaveService.list_all_requests_admin`)
+    # is what backs the Dashboard's "recent leave activity" feed.
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -199,3 +203,40 @@ class LeaveBalanceAdjustmentResponse:
     reason: str
     adjusted_by: uuid.UUID | None
     created_at: datetime
+
+
+# --- Statistics (Phase 14: Dashboard) ----------------------------------
+
+
+@dataclass(frozen=True)
+class LeaveTypeStat:
+    leave_type_id: uuid.UUID
+    leave_type_name: str
+    count: int
+
+
+@dataclass(frozen=True)
+class LeaveMonthlyStat:
+    month: str  # "YYYY-MM"
+    count: int
+
+
+@dataclass(frozen=True)
+class LeaveStatisticsResponse:
+    """Aggregate counts computed against this module's own data, exposed as
+    a public read so `apps.dashboard` can consume it through a reverse
+    port (`LeaveStatisticsPort`) exactly like every other cross-module read
+    in this codebase — see `LeaveRequestService.get_statistics`.
+
+    `status_breakdown` is all-time (every request ever, regardless of when),
+    matching the KPI-card convention every other "how many X" figure in this
+    codebase already uses (e.g. `EmployeeStatisticsResponse.status_breakdown`).
+    `monthly_trend` covers the trailing window `LeaveRequestService
+    .get_statistics` requests (default 6 months) and is backfilled with
+    zero-count months so a line/area chart never shows a gap.
+    """
+
+    status_breakdown: dict[str, int]
+    leave_type_breakdown: list[LeaveTypeStat]
+    monthly_trend: list[LeaveMonthlyStat]
+    on_leave_today_count: int

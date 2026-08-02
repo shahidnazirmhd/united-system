@@ -29,11 +29,18 @@ one query per employee row — instead of skipping the resolution outright.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
-from apps.employees.application.dtos import EmployeeListQuery, EmployeeResponse
+from apps.employees.application.dtos import (
+    EmployeeDepartmentStat,
+    EmployeeListQuery,
+    EmployeeResponse,
+    EmployeeStatisticsResponse,
+)
 from apps.employees.application.mappers import employee_to_response
 from apps.employees.application.ports import UserLookupPort
 from apps.employees.domain.entities import Employee
+from apps.employees.domain.enums import EmployeeStatus
 from apps.employees.domain.exceptions import EmployeeNotFoundError, EmployeeNotLinkedToTelegramError
 from apps.employees.domain.repositories import DepartmentRepository, EmployeeRepository
 from shared_kernel.domain.repository import PageResult, QueryParams
@@ -125,6 +132,48 @@ class EmployeeQueryService:
             QueryParams(filters={"current_status__in": statuses}, page_size=100_000)
         )
         return [e.id for e in page_result.items]
+
+    # --- Statistics (Phase 14: Dashboard) --------------------------------
+    def get_statistics(self) -> EmployeeStatisticsResponse:
+        """Aggregate counts for the Dashboard's Employee Statistics widgets
+        — consumed through `apps.dashboard`'s own `EmployeeStatisticsPort`
+        adapter, never by that module querying `EmployeeRecord` directly
+        (see that adapter's docstring). `inactive_count` is deliberately
+        `total - active - terminated` (i.e. `ON_LEAVE` + `SUSPENDED`) rather
+        than a fourth named bucket — the Dashboard's own KPI cards only ever
+        distinguish "active," "inactive-but-not-terminated," and
+        "terminated"; the full per-status breakdown is still available via
+        `status_breakdown` for anything that wants finer detail (e.g. a
+        chart)."""
+        since = date.today().replace(day=1)
+        snapshot = self._employees.get_statistics_snapshot(new_hires_since=since)
+
+        active = snapshot.by_status.get(EmployeeStatus.ACTIVE.value, 0)
+        terminated = snapshot.by_status.get(EmployeeStatus.TERMINATED.value, 0)
+        inactive = max(0, snapshot.total - active - terminated)
+
+        department_ids = frozenset(dept_id for dept_id, _count in snapshot.by_department)
+        department_names = {d.id: d.name for d in self._departments.get_by_ids(department_ids)}
+        department_breakdown = [
+            EmployeeDepartmentStat(
+                department_id=dept_id,
+                department_name=department_names.get(dept_id, "Unassigned"),
+                count=count,
+            )
+            for dept_id, count in snapshot.by_department
+        ]
+
+        return EmployeeStatisticsResponse(
+            total_employees=snapshot.total,
+            active_count=active,
+            inactive_count=inactive,
+            terminated_count=terminated,
+            status_breakdown=snapshot.by_status,
+            current_status_breakdown=snapshot.by_current_status,
+            employment_type_breakdown=snapshot.by_employment_type,
+            department_breakdown=department_breakdown,
+            new_hires_this_month=snapshot.new_hires_since,
+        )
 
     def list(self, query: EmployeeListQuery) -> PageResult[EmployeeResponse]:
         filters: dict[str, object] = {}

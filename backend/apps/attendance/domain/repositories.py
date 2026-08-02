@@ -25,3 +25,17 @@ class HolidayRepository(BaseRepository[Holiday]):
         adapter (`apps.leave.infrastructure`). One query per leave
         application, not one query per calendar day."""
         raise NotImplementedError
+
+    @abstractmethod
+    def list_upcoming(self, *, from_date: date, limit: int) -> list[Holiday]:
+        """Every active holiday on or after `from_date`, earliest first,
+        capped at `limit` — Phase 14 (Dashboard)'s "Upcoming Holidays"
+        widget, via this module's own `HolidayLookupPort` adapter
+        (`apps.dashboard.infrastructure`). A dedicated method rather than
+        reusing the generic `list()` with a raw `holiday_date__gte` filter:
+        `HolidayQueryService.list()`'s own `HolidayListQuery` DTO only
+        exposes `is_active`/`year`/`search`/`ordering` (see that service's
+        docstring) — deliberately not a grab-bag of arbitrary ORM lookup
+        strings a caller could pass through, so "what does upcoming mean"
+        stays this module's own decision, expressed as a named method."""
+        raise NotImplementedError

@@ -18,6 +18,7 @@ from apps.leave.application.dtos import (
     LeaveBalanceAdjustmentResponse,
     LeaveBalanceResponse,
     LeaveRequestResponse,
+    LeaveStatisticsResponse,
     LeaveTypeListQuery,
     LeaveTypeResponse,
     RejectLeaveRequest,
@@ -185,3 +186,7 @@ class LeaveService:
 
     def has_any_active_request(self) -> bool:
         return self._requests.has_any_active_request()
+
+    # --- Statistics (Phase 14: Dashboard) --------------------------------
+    def get_statistics(self) -> LeaveStatisticsResponse:
+        return self._requests.get_statistics()

@@ -22,7 +22,10 @@ from apps.leave.application.dtos import (
     ApplyLeaveRequest,
     ApproveLeaveRequest,
     CancelLeaveRequest,
+    LeaveMonthlyStat,
     LeaveRequestResponse,
+    LeaveStatisticsResponse,
+    LeaveTypeStat,
     RejectLeaveRequest,
 )
 from apps.leave.application.mappers import leave_request_to_response
@@ -51,6 +54,37 @@ from shared_kernel.application.unit_of_work import UnitOfWork
 from shared_kernel.infrastructure.uuid7 import generate_uuid7
 
 logger = logging.getLogger(__name__)
+
+
+# --- Statistics helpers (Phase 14: Dashboard) -------------------------------
+# Plain date arithmetic, no Django/ORM — kept as free functions rather than
+# methods since neither needs `self`, matching this module's general
+# "no unnecessary state" style for pure helpers (see
+# domain/working_days_calculator.py's identical shape).
+def _months_before(today: date, months: int) -> date:
+    """The first day of the month `months` months before `today`'s month
+    (`months=6` on 2026-08-15 -> 2026-02-01) — the start of the trailing
+    window `get_statistics` reports a monthly trend over."""
+    month_index = today.month - 1 - months
+    year = today.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _month_sequence(since: date, today: date) -> list[str]:
+    """Every "YYYY-MM" month from `since` through `today`'s month,
+    inclusive, in order — the full x-axis for a monthly trend chart, so a
+    month with zero applications still gets its own zero-valued point
+    instead of the line skipping straight over it."""
+    months: list[str] = []
+    year, month = since.year, since.month
+    while (year, month) <= (today.year, today.month):
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return months
 
 
 class LeaveRequestService(BaseService[LeaveRequest]):
@@ -334,6 +368,51 @@ class LeaveRequestService(BaseService[LeaveRequest]):
         self._event_bus.publish(LeaveRequestRejected(leave_request_id=saved.id, employee_id=saved.employee_id))
         logger.info("Leave rejected: request=%s employee=%s", saved.id, saved.employee_id)
         return self.to_enriched_response(saved)
+
+    # --- Statistics (Phase 14: Dashboard) ---------------------------
+    def get_statistics(self, *, monthly_trend_months: int = 6) -> LeaveStatisticsResponse:
+        """Consumed through `apps.dashboard`'s own `LeaveStatisticsPort`
+        adapter — see `apps.employees.application.services
+        .employee_query_service.EmployeeQueryService.get_statistics`'s
+        identical role/shape for the sibling module.
+
+        `monthly_trend_months` is resolved to a concrete date threshold
+        HERE (not in the repository — see
+        `LeaveRequestRepository.get_statistics_snapshot`'s docstring), then
+        the trend is backfilled with any month in that window the snapshot
+        didn't return a row for (zero applications that month) — a line/area
+        chart over a fixed N-month window must never show a gap just
+        because nothing happened in one of them.
+        """
+        today = date.today()
+        since = _months_before(today, monthly_trend_months)
+        snapshot = self._requests.get_statistics_snapshot(monthly_trend_since=since)
+
+        counts_by_month = dict(snapshot.monthly_trend)
+        monthly_trend = [
+            LeaveMonthlyStat(month=month, count=counts_by_month.get(month, 0))
+            for month in _month_sequence(since, today)
+        ]
+
+        leave_type_breakdown = []
+        for leave_type_id, count in snapshot.by_leave_type:
+            leave_type = self._leave_types.get_by_id(leave_type_id)
+            leave_type_breakdown.append(
+                LeaveTypeStat(
+                    leave_type_id=leave_type_id,
+                    leave_type_name=leave_type.name if leave_type is not None else "Unknown",
+                    count=count,
+                )
+            )
+
+        on_leave_today_count = len(self._requests.list_employee_ids_with_approved_leave_covering(today))
+
+        return LeaveStatisticsResponse(
+            status_breakdown=snapshot.by_status,
+            leave_type_breakdown=leave_type_breakdown,
+            monthly_trend=monthly_trend,
+            on_leave_today_count=on_leave_today_count,
+        )
 
     # --- Employee status integration (round 14 items 6/8) -----------
     def _sync_status_on_approve(self, saved: LeaveRequest) -> None:

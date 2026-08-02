@@ -15,7 +15,8 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import TruncMonth
 
 from apps.leave.domain.entities import LeaveBalance, LeaveBalanceAdjustment, LeaveRequest, LeaveType
 from apps.leave.domain.enums import ACTIVE_LEAVE_REQUEST_STATUSES, LeaveBalanceAdjustmentType, LeaveRequestStatus
@@ -23,6 +24,7 @@ from apps.leave.domain.repositories import (
     LeaveBalanceAdjustmentRepository,
     LeaveBalanceRepository,
     LeaveRequestRepository,
+    LeaveStatisticsSnapshot,
     LeaveTypeRepository,
 )
 from apps.leave.infrastructure.models import (
@@ -77,6 +79,7 @@ def _leave_request_to_domain(record: LeaveRequestRecord) -> LeaveRequest:
         cancellation_reason=record.cancellation_reason,
         working_days=record.working_days,
         balance_at_application=record.balance_at_application,
+        updated_at=record.updated_at,
     )
 
 
@@ -251,6 +254,26 @@ class DjangoLeaveRequestRepository(DjangoBaseRepository[LeaveRequestRecord, Leav
             status__in=_ACTIVE_STATUS_VALUES,
             leave_type_id=leave_type_id,
         ).exists()
+
+    # --- Statistics (Phase 14: Dashboard) --------------------------------
+    def get_statistics_snapshot(self, *, monthly_trend_since: date) -> LeaveStatisticsSnapshot:
+        by_status = {
+            row["status"]: row["count"]
+            for row in self.model.objects.values("status").annotate(count=Count("id"))
+        }
+        by_leave_type = [
+            (row["leave_type_id"], row["count"])
+            for row in self.model.objects.values("leave_type_id").annotate(count=Count("id"))
+        ]
+        monthly = (
+            self.model.objects.filter(created_at__date__gte=monthly_trend_since)
+            .annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(count=Count("id"))
+            .order_by("month")
+        )
+        monthly_trend = [(row["month"].strftime("%Y-%m"), row["count"]) for row in monthly]
+        return LeaveStatisticsSnapshot(by_status=by_status, by_leave_type=by_leave_type, monthly_trend=monthly_trend)
 
 
 def _leave_balance_adjustment_to_domain(record: LeaveBalanceAdjustmentRecord) -> LeaveBalanceAdjustment:

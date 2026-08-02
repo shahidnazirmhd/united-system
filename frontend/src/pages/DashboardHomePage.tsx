@@ -1,42 +1,48 @@
-import { CalendarClock, ClipboardCheck, Clock, Users } from "lucide-react";
-
 import { PageHeader } from "@/components/common/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const SUMMARY_CARDS = [
-  { label: "Employees", icon: Users },
-  { label: "Pending Leave Requests", icon: CalendarClock },
-  { label: "Pending Approvals", icon: ClipboardCheck },
-  { label: "Open Attendance Items", icon: Clock },
-] as const;
+import {
+  EmployeeStatisticsSection,
+  LeaveStatisticsSection,
+  PendingApprovalsCard,
+  QuickActionsCard,
+  RecentActivityCard,
+  UpcomingHolidaysCard,
+} from "@/modules/dashboard";
 
 /**
- * The dashboard's index route (`/`). Lazy-loaded from app/router/routes.tsx
- * as a worked example of the route-based code-splitting convention — real
- * summary data will replace these static cards once the modules that back
- * them (Employees, Leave, Approvals, Attendance) are built.
+ * The dashboard's index route (`/`) — a live, auto-refreshing overview
+ * composed entirely from `modules/dashboard`'s own widgets. Every widget
+ * below independently fetches its own data (via TanStack Query's
+ * `refetchInterval`, see `useDashboardQueries.ts`) and independently decides
+ * its own visibility (via `useHasPermission`/`useHasAnyPermission`), so this
+ * page itself has no data-fetching or permission logic of its own — it is
+ * purely layout. Adding a future widget (a new KPI, chart, or list) means
+ * adding one more line to this grid, never editing an existing widget.
+ *
+ * Attendance Summary is intentionally not included: this codebase's
+ * `apps.attendance` module covers Holiday Management only — there is no
+ * clock-in/out or daily attendance tracking data model yet (see
+ * `apps.dashboard`'s module docstring) — so a real "Attendance Summary"
+ * widget would have nothing genuine to show. Upcoming Holidays (below)
+ * is the one Attendance-sourced widget with real data behind it.
  */
 export function DashboardHomePage() {
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader
         title="Dashboard"
-        description="An overview will appear here once the underlying modules are built."
+        description="A live overview of your organization — updates automatically, no refresh needed."
       />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {SUMMARY_CARDS.map((card) => (
-          <Card key={card.label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {card.label}
-              </CardTitle>
-              <card.icon className="size-4 text-muted-foreground" aria-hidden="true" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold text-foreground">—</div>
-            </CardContent>
-          </Card>
-        ))}
+
+      <QuickActionsCard />
+
+      <EmployeeStatisticsSection />
+
+      <LeaveStatisticsSection />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PendingApprovalsCard />
+        <RecentActivityCard />
+        <UpcomingHolidaysCard />
       </div>
     </div>
   );

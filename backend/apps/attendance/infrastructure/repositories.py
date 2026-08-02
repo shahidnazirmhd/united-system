@@ -42,3 +42,9 @@ class DjangoHolidayRepository(DjangoBaseRepository[HolidayRecord, Holiday], Holi
                 is_active=True, holiday_date__gte=start_date, holiday_date__lte=end_date
             ).values_list("holiday_date", flat=True)
         )
+
+    def list_upcoming(self, *, from_date: date, limit: int) -> list[Holiday]:
+        records = self.model.objects.filter(is_active=True, holiday_date__gte=from_date).order_by(
+            "holiday_date"
+        )[:limit]
+        return [self._to_entity(r) for r in records]

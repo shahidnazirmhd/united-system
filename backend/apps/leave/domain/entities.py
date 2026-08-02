@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+
 from apps.leave.domain.enums import LeaveBalanceAdjustmentType, LeaveRequestStatus
 from shared_kernel.domain.base_entity import Entity
 from shared_kernel.domain.value_objects import DateRange
@@ -110,6 +111,17 @@ class LeaveRequest(Entity):
     # balance at the time the leave was applied"). `None` only for legacy
     # rows created before this column existed.
     balance_at_application: Decimal | None = None
+    # Phase 14 (Dashboard) — mirrors the ORM's own `auto_now` column
+    # (BaseModel.updated_at). Bumped by EVERY lifecycle write to this row —
+    # apply/approve/reject/cancel all call `LeaveRequestRepository.update()`
+    # — which is exactly what makes ordering by this column (see
+    # `LeaveService.list_all_requests_admin`, called with
+    # `ordering=("-updated_at",)` by `apps.dashboard`'s recent-activity
+    # adapter) a correct "what changed most recently, across every kind of
+    # change" feed with no new query logic needed. `None` only for an
+    # in-memory entity that was never persisted (e.g. inside a unit test
+    # fake repository that doesn't set it).
+    updated_at: datetime | None = None
 
     @property
     def total_days(self) -> Decimal:

@@ -16,12 +16,33 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
 from apps.leave.domain.entities import LeaveBalance, LeaveBalanceAdjustment, LeaveRequest, LeaveType
 from shared_kernel.domain.repository import BaseRepository
 from shared_kernel.domain.value_objects import DateRange
+
+
+@dataclass(frozen=True)
+class LeaveStatisticsSnapshot:
+    """Phase 14 (Dashboard) — plain read-model returned by
+    `LeaveRequestRepository.get_statistics_snapshot`, same "not a domain
+    entity" judgment as `apps.employees.domain.repositories
+    .EmployeeStatisticsSnapshot`. `by_leave_type` is `(leave_type_id, count)`
+    pairs — name resolution happens in `LeaveRequestService.get_statistics`
+    via the existing `LeaveTypeRepository.list_active()` read, matching how
+    `EmployeeQueryService.get_statistics` resolves department names outside
+    its own repository. `monthly_trend` is `(month, count)` pairs for every
+    month that had at least one application in the requested window — a
+    month with zero applications simply doesn't appear, and it is the
+    caller's job to backfill zero-count months for a gap-free chart (see
+    that method's docstring)."""
+
+    by_status: dict[str, int] = field(default_factory=dict)
+    by_leave_type: list[tuple[uuid.UUID, int]] = field(default_factory=list)
+    monthly_trend: list[tuple[str, int]] = field(default_factory=list)
 
 
 class LeaveTypeRepository(BaseRepository[LeaveType]):
@@ -151,6 +172,18 @@ class LeaveRequestRepository(BaseRepository[LeaveRequest]):
         """True if any PENDING/APPROVED request references this leave
         type — used to block editing/deactivating a LeaveType that a real
         leave request still depends on."""
+        raise NotImplementedError
+
+    # --- Statistics (Phase 14: Dashboard) --------------------------------
+    @abstractmethod
+    def get_statistics_snapshot(self, *, monthly_trend_since: date) -> LeaveStatisticsSnapshot:
+        """Every count `LeaveRequestService.get_statistics` needs — status
+        breakdown (all-time), leave-type breakdown (all-time), and a
+        by-month application count from `monthly_trend_since` onward
+        (a plain date threshold the caller computes, e.g. "6 months ago" —
+        deciding the window size is an application-layer policy choice, the
+        same discipline `EmployeeRepository.get_statistics_snapshot
+        .new_hires_since` already established)."""
         raise NotImplementedError
 
 

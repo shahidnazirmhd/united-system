@@ -74,6 +74,9 @@ class HolidayService:
             )
         return self._queries.list(query)
 
+    def list_upcoming(self, *, limit: int = 5) -> list[HolidayResponse]:
+        return self._queries.list_upcoming(limit=limit)
+
     def create_holiday(self, request: CreateHolidayRequest) -> HolidayResponse:
         return self._commands.create_holiday(request)
 

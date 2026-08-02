@@ -14,4 +14,5 @@ export const API_ENDPOINTS = {
   approvals: "/approvals",
   settings: "/settings",
   attendance: "/attendance",
+  dashboard: "/dashboard",
 } as const;

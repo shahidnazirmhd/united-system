@@ -13,6 +13,43 @@ from datetime import date, datetime
 
 
 @dataclass(frozen=True)
+class EmployeeDepartmentStat:
+    """One row of `EmployeeStatisticsResponse.department_breakdown` — Phase
+    14 (Dashboard)."""
+
+    department_id: uuid.UUID
+    department_name: str
+    count: int
+
+
+@dataclass(frozen=True)
+class EmployeeStatisticsResponse:
+    """Phase 14 (Dashboard) — aggregate counts computed against this
+    module's own data, exposed as a public read so `apps.dashboard` can
+    consume it through a reverse port (`EmployeeStatisticsPort`) exactly
+    like every other cross-module read in this codebase, never by querying
+    `EmployeeRecord` directly. See `EmployeeQueryService.get_statistics`.
+
+    `status_breakdown`/`current_status_breakdown`/`employment_type_breakdown`
+    are `{enum_value: count}` — deliberately plain dicts keyed by the same
+    string values `EmployeeStatus`/`EmployeeCurrentStatus`/`EmploymentType`
+    already use on the wire elsewhere (`EmployeeResponse.status` etc.), so a
+    frontend chart can reuse its existing status-label/color mapping without
+    a second translation table.
+    """
+
+    total_employees: int
+    active_count: int
+    inactive_count: int
+    terminated_count: int
+    status_breakdown: dict[str, int]
+    current_status_breakdown: dict[str, int]
+    employment_type_breakdown: dict[str, int]
+    department_breakdown: list[EmployeeDepartmentStat]
+    new_hires_this_month: int
+
+
+@dataclass(frozen=True)
 class CreateEmployeeRequest:
     first_name: str
     last_name: str

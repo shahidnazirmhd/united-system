@@ -11,9 +11,9 @@ Employees too.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from django.db.models import F
+from django.db.models import Count, F
 
 from apps.employees.domain.entities import Department, Employee, EmployeeLinkToken
 from apps.employees.domain.enums import EmployeeCurrentStatus, EmployeeStatus, EmploymentType
@@ -21,6 +21,7 @@ from apps.employees.domain.repositories import (
     DepartmentRepository,
     EmployeeLinkTokenRepository,
     EmployeeRepository,
+    EmployeeStatisticsSnapshot,
 )
 from apps.employees.domain.value_objects import ContactInformation, EmployeeProfile, EmploymentInformation
 from apps.employees.infrastructure.models import DepartmentRecord, EmployeeLinkTokenRecord, EmployeeRecord
@@ -137,6 +138,44 @@ class DjangoEmployeeRepository(DjangoBaseRepository[EmployeeRecord, Employee], E
 
     def next_employee_code(self) -> str:
         return next_employee_code()
+
+    def get_statistics_snapshot(self, *, new_hires_since: date) -> EmployeeStatisticsSnapshot:
+        # Five small aggregate queries (one per breakdown) rather than one
+        # giant multi-annotate query — each `.values(...).annotate(Count)`
+        # groups by a single column, which stays simple and correct; a
+        # single combined query grouping by all four columns at once would
+        # return one row per DISTINCT COMBINATION, not what a per-field
+        # breakdown chart needs. Total headcount and the date-threshold
+        # count are two more single-purpose `.count()` calls. Six small,
+        # obviously-correct queries over a table with, in practice, at most
+        # a few thousand rows is not a real cost — nothing here is called
+        # per-request-per-row.
+        total = self.model.objects.count()
+        by_status = {
+            row["employment_status"]: row["count"]
+            for row in self.model.objects.values("employment_status").annotate(count=Count("id"))
+        }
+        by_current_status = {
+            row["current_status"]: row["count"]
+            for row in self.model.objects.values("current_status").annotate(count=Count("id"))
+        }
+        by_employment_type = {
+            row["employment_type"]: row["count"]
+            for row in self.model.objects.values("employment_type").annotate(count=Count("id"))
+        }
+        by_department = [
+            (row["department_id"], row["count"])
+            for row in self.model.objects.values("department_id").annotate(count=Count("id"))
+        ]
+        new_hires = self.model.objects.filter(date_of_joining__gte=new_hires_since).count()
+        return EmployeeStatisticsSnapshot(
+            total=total,
+            by_status=by_status,
+            by_current_status=by_current_status,
+            by_employment_type=by_employment_type,
+            by_department=by_department,
+            new_hires_since=new_hires,
+        )
 
 
 class DjangoDepartmentRepository(DjangoBaseRepository[DepartmentRecord, Department], DepartmentRepository):

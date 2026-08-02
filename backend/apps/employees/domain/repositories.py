@@ -9,11 +9,34 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime
 
 from apps.employees.domain.entities import Department, Employee, EmployeeLinkToken
 from shared_kernel.domain.repository import BaseRepository
 from shared_kernel.domain.value_objects import Email
+
+
+@dataclass(frozen=True)
+class EmployeeStatisticsSnapshot:
+    """Phase 14 (Dashboard) — plain read-model returned by
+    `EmployeeRepository.get_statistics_snapshot`. Deliberately NOT a domain
+    entity (no `id`, no behavior) — this is a one-off aggregate query
+    result, the same "plain dataclass, not an Entity" judgment call
+    `shared_kernel.domain.repository.PageResult` already makes for list()'s
+    own return shape. `by_department` is `(department_id, count)` pairs, not
+    yet resolved to names — name resolution stays the application layer's
+    job (`EmployeeQueryService.get_statistics`, via the existing
+    `DepartmentRepository.get_by_ids` batch lookup), matching how `list()`
+    already resolves `department_name` outside the repository.
+    """
+
+    total: int
+    by_status: dict[str, int] = field(default_factory=dict)
+    by_current_status: dict[str, int] = field(default_factory=dict)
+    by_employment_type: dict[str, int] = field(default_factory=dict)
+    by_department: list[tuple[uuid.UUID, int]] = field(default_factory=list)
+    new_hires_since: int = 0
 
 
 class EmployeeRepository(BaseRepository[Employee]):
@@ -56,6 +79,18 @@ class EmployeeRepository(BaseRepository[Employee]):
         `EMP-000042`) backed by a real Postgres sequence — see
         infrastructure/sequence.py for why a row-count-based scheme was
         rejected."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_statistics_snapshot(self, *, new_hires_since: date) -> EmployeeStatisticsSnapshot:
+        """Phase 14 (Dashboard) — every count `EmployeeQueryService
+        .get_statistics` needs, computed in as few aggregate queries as the
+        concrete (Django) implementation can manage, rather than five
+        separate `.count()` round trips. `new_hires_since` is a plain date
+        threshold handed in by the caller (`date.today().replace(day=1)` for
+        "this month") — deciding what "this month" means is an application-
+        layer policy choice, not something this repository method should
+        hardcode."""
         raise NotImplementedError
 
 

@@ -75,6 +75,7 @@ def leave_request_to_response(
         balance_at_application=request.balance_at_application,
         employee_name=employee_name,
         employee_code=employee_code,
+        updated_at=request.updated_at,
     )
 
 
