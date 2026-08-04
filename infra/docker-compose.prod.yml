@@ -82,6 +82,31 @@ services:
       timeout: 5s
       retries: 10
 
+  # --- Frontend --------------------------------------------------------
+  # `target: production` builds the nginx-serving stage (see
+  # infra/docker/frontend.Dockerfile) — never `local`, same
+  # production-only-tooling discipline `backend`'s pinned `target:
+  # production` above documents. Vite bakes VITE_-prefixed variables into
+  # the compiled JS at build time, so they arrive as `args:` here (sourced
+  # from the root .env's "Frontend (production build args)" section via
+  # docker compose's own `${VAR}` substitution), not as a runtime
+  # `env_file:` — a static bundle has nothing left to read at container
+  # start.
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../infra/docker/frontend.Dockerfile
+      target: production
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?VITE_API_BASE_URL must be set in .env}
+        VITE_APP_NAME: ${VITE_APP_NAME:-United HRMS}
+        VITE_APP_ENV: ${VITE_APP_ENV:-production}
+    image: united-hrms-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+
   # --- Telegram Gateway (Phase 7) -----------------------------------------
   # Deliberately has no `depends_on: db` and never will — see
   # telegram_gateway/requirements.txt's docstring; this container has no

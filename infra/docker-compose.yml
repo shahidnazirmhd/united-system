@@ -96,6 +96,38 @@ services:
       redis:
         condition: service_healthy
 
+  # --- Frontend --------------------------------------------------------
+  # Reads its own env file (../frontend/.env, matching
+  # frontend/.env.example), not the root ../.env every other service here
+  # shares — Vite's VITE_-prefixed variables are frontend-only and have no
+  # overlap with the backend/Gateway's shared secrets, so keeping them in
+  # the frontend's own file (its existing convention, pre-dating this
+  # service) avoids duplicating them into the root file for no reason. The
+  # root .env's own "Frontend (production build args)" section exists for
+  # a different purpose entirely — see docker-compose.prod.yml.
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../infra/docker/frontend.Dockerfile
+      target: local
+    command: npm run dev -- --host 0.0.0.0
+    env_file:
+      - ../frontend/.env
+    volumes:
+      - ../frontend:/app
+      # Anonymous volume: keeps the image's own npm-ci-installed
+      # node_modules (built inside the Linux container) from being
+      # shadowed by the bind mount above — standard node dev-container
+      # practice, doubly necessary here since the host may be a different
+      # OS and some deps ship platform-specific native binaries.
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_started
+
   # --- Telegram Gateway (Phase 7) -----------------------------------------
   # Its own container, its own Redis, zero access to `db` — no `depends_on:
   # db` entry exists below, and none should ever be added; see
