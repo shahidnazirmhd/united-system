@@ -8,7 +8,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { buildEmployeeDetailPath, buildEmployeeEditPath } from "@/app/router/routePaths";
 import { CurrentStatusBadge } from "@/modules/employees/components/CurrentStatusBadge";
 import { EmployeeStatusBadge } from "@/modules/employees/components/EmployeeStatusBadge";
@@ -25,7 +32,12 @@ interface EmployeeTableProps {
   onDeactivate: (employee: Employee) => void;
 }
 
-export function EmployeeTable({ employees, canManage, onActivate, onDeactivate }: EmployeeTableProps) {
+export function EmployeeTable({
+  employees,
+  canManage,
+  onActivate,
+  onDeactivate,
+}: EmployeeTableProps) {
   const navigate = useNavigate();
 
   return (
@@ -59,7 +71,9 @@ export function EmployeeTable({ employees, canManage, onActivate, onDeactivate }
             </TableCell>
             <TableCell className="text-muted-foreground">{employee.employeeCode}</TableCell>
             <TableCell>{employee.jobTitle}</TableCell>
-            <TableCell className="text-muted-foreground">{employee.departmentName ?? "—"}</TableCell>
+            <TableCell className="text-muted-foreground">
+              {employee.departmentName ?? "—"}
+            </TableCell>
             <TableCell className="text-muted-foreground">
               {employee.employmentType.replace("_", " ")}
             </TableCell>
@@ -72,7 +86,11 @@ export function EmployeeTable({ employees, canManage, onActivate, onDeactivate }
             <TableCell onClick={(event) => event.stopPropagation()}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label={`Actions for ${employee.fullName}`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Actions for ${employee.fullName}`}
+                  >
                     <MoreHorizontal className="size-4" aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -85,12 +103,15 @@ export function EmployeeTable({ employees, canManage, onActivate, onDeactivate }
                       Edit
                     </DropdownMenuItem>
                   ) : null}
-                  {!canManage || employee.status === "terminated" ? null : employee.status === "active" ? (
+                  {!canManage || employee.status === "terminated" ? null : employee.status ===
+                    "active" ? (
                     <DropdownMenuItem onClick={() => onDeactivate(employee)}>
                       Deactivate
                     </DropdownMenuItem>
                   ) : (
-                    <DropdownMenuItem onClick={() => onActivate(employee)}>Activate</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onActivate(employee)}>
+                      Activate
+                    </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -79,7 +79,10 @@ export function EmployeeListPage() {
         description="Directory, profiles, and employment status for every employee."
         actions={
           <>
-            <Button variant="outline" onClick={() => navigate(ROUTE_PATHS.dashboard.employeeDepartments)}>
+            <Button
+              variant="outline"
+              onClick={() => navigate(ROUTE_PATHS.dashboard.employeeDepartments)}
+            >
               <Building2 className="size-4" aria-hidden="true" />
               Departments
             </Button>

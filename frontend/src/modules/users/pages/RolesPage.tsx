@@ -9,7 +9,11 @@ import { ROUTE_PATHS } from "@/app/router/routePaths";
 import { useHasPermission } from "@/lib/auth";
 import { RoleFormDialog } from "@/modules/users/components/RoleFormDialog";
 import { RoleTable } from "@/modules/users/components/RoleTable";
-import { useCreateRoleMutation, useDeleteRoleMutation, useUpdateRoleMutation } from "@/modules/users/hooks/useRoleMutations";
+import {
+  useCreateRoleMutation,
+  useDeleteRoleMutation,
+  useUpdateRoleMutation,
+} from "@/modules/users/hooks/useRoleMutations";
 import { useRolesQuery } from "@/modules/users/hooks/useRoleQueries";
 import type { Role } from "@/modules/users/types/role.types";
 import type { RoleFormValues } from "@/modules/users/validation/roleSchema";
@@ -57,7 +61,11 @@ export function RolesPage() {
 
   const handleSubmit = (values: RoleFormValues) => {
     setSubmitError(null);
-    const input = { name: values.name, description: values.description, permissionCodes: values.permissionCodes };
+    const input = {
+      name: values.name,
+      description: values.description,
+      permissionCodes: values.permissionCodes,
+    };
 
     if (editingRole) {
       updateMutation.mutate(

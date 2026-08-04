@@ -4,11 +4,24 @@ import { useNavigate } from "react-router-dom";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ErrorState, PageLoader } from "@/components/common";
 import { buildLeaveRequestDetailPath } from "@/app/router/routePaths";
-import { useEmployeeLeaveBalanceQuery, useEmployeeLeaveHistoryQuery } from "@/modules/employees/hooks/useEmployeeLeaveQueries";
-import type { EmployeeLeaveHistoryFilters, EmployeeLeaveRequestStatus } from "@/modules/employees/types/employeeLeave.types";
+import {
+  useEmployeeLeaveBalanceQuery,
+  useEmployeeLeaveHistoryQuery,
+} from "@/modules/employees/hooks/useEmployeeLeaveQueries";
+import type {
+  EmployeeLeaveHistoryFilters,
+  EmployeeLeaveRequestStatus,
+} from "@/modules/employees/types/employeeLeave.types";
 
 const STATUS_VARIANT: Record<EmployeeLeaveRequestStatus, NonNullable<BadgeProps["variant"]>> = {
   draft: "secondary",
@@ -69,10 +82,13 @@ export function EmployeeLeaveSection({ employeeId }: EmployeeLeaveSectionProps) 
                 <CardContent className="space-y-1">
                   <p className="text-xl font-semibold text-foreground">
                     {balance.availableDays}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">days available</span>
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      days available
+                    </span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Entitled {balance.entitledDays} · Used {balance.usedDays} · Pending {balance.pendingDays}
+                    Entitled {balance.entitledDays} · Used {balance.usedDays} · Pending{" "}
+                    {balance.pendingDays}
                   </p>
                 </CardContent>
               </Card>
@@ -120,7 +136,9 @@ export function EmployeeLeaveSection({ employeeId }: EmployeeLeaveSectionProps) 
                     <TableCell>{request.totalDays}</TableCell>
                     <TableCell>{request.workingDays}</TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[request.status]}>{STATUS_LABEL[request.status]}</Badge>
+                      <Badge variant={STATUS_VARIANT[request.status]}>
+                        {STATUS_LABEL[request.status]}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}

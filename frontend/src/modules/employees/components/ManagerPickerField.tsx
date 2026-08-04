@@ -27,7 +27,11 @@ interface ManagerPickerFieldProps {
  * `modules/employees`, so there's no cross-module concern here, unlike the
  * Leave module's picker.
  */
-export function ManagerPickerField({ selected, onSelect, excludeEmployeeId }: ManagerPickerFieldProps) {
+export function ManagerPickerField({
+  selected,
+  onSelect,
+  excludeEmployeeId,
+}: ManagerPickerFieldProps) {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const { data: results, isLoading } = useEmployeeSearchQuery(debouncedSearch);

@@ -14,7 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useAllEmployeesQuery } from "@/modules/employees/hooks/useEmployeeQueries";
 import { useAllDepartmentsQuery } from "@/modules/employees/hooks/useDepartmentQueries";
@@ -61,7 +67,13 @@ export function DepartmentFormDialog({
   } = useForm<DepartmentFormValues>({
     resolver: zodResolver(departmentFormSchema),
     mode: "onTouched",
-    defaultValues: { name: "", code: "", parentDepartmentId: "", headEmployeeId: "", isActive: true },
+    defaultValues: {
+      name: "",
+      code: "",
+      parentDepartmentId: "",
+      headEmployeeId: "",
+      isActive: true,
+    },
   });
 
   useEffect(() => {

@@ -3,9 +3,17 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import type { ApiError } from "@/lib/api/types";
 import { createLeaveType, updateLeaveType } from "@/modules/leave/api/leaveApi";
 import { leaveKeys } from "@/modules/leave/hooks/useLeaveQueries";
-import type { CreateLeaveTypeInput, LeaveType, UpdateLeaveTypeInput } from "@/modules/leave/types/leave.types";
+import type {
+  CreateLeaveTypeInput,
+  LeaveType,
+  UpdateLeaveTypeInput,
+} from "@/modules/leave/types/leave.types";
 
-export function useCreateLeaveTypeMutation(): UseMutationResult<LeaveType, ApiError, CreateLeaveTypeInput> {
+export function useCreateLeaveTypeMutation(): UseMutationResult<
+  LeaveType,
+  ApiError,
+  CreateLeaveTypeInput
+> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createLeaveType,

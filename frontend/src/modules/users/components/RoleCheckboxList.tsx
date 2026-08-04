@@ -16,7 +16,12 @@ interface RoleCheckboxListProps {
  * small, rarely-changing set `RoleFormDialog`'s permission picker already
  * assumes (see `usePermissionsQuery`'s docstring for the identical call).
  */
-export function RoleCheckboxList({ roles, isLoading, selectedRoleIds, onChange }: RoleCheckboxListProps) {
+export function RoleCheckboxList({
+  roles,
+  isLoading,
+  selectedRoleIds,
+  onChange,
+}: RoleCheckboxListProps) {
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Loading roles…</p>;
   }

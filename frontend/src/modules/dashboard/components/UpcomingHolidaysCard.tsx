@@ -27,9 +27,14 @@ export function UpcomingHolidaysCard() {
     >
       <ul className="divide-y divide-border">
         {(data ?? []).map((holiday) => (
-          <li key={holiday.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+          <li
+            key={holiday.id}
+            className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+          >
             <span className="truncate text-sm font-medium text-foreground">{holiday.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{formatDate(holiday.holidayDate)}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {formatDate(holiday.holidayDate)}
+            </span>
           </li>
         ))}
       </ul>

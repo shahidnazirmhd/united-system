@@ -11,7 +11,11 @@ import {
   revokeRoleFromUser,
   updateUser,
 } from "@/modules/users/api/userApi";
-import type { CreateUserInput, ManagedUser, UpdateUserInput } from "@/modules/users/types/user.types";
+import type {
+  CreateUserInput,
+  ManagedUser,
+  UpdateUserInput,
+} from "@/modules/users/types/user.types";
 
 export function useCreateUserMutation(): UseMutationResult<ManagedUser, ApiError, CreateUserInput> {
   const queryClient = useQueryClient();

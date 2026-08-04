@@ -1,10 +1,19 @@
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CurrentStatusBadge } from "@/modules/employees/components/CurrentStatusBadge";
 import { useUpdateEmployeeCurrentStatusMutation } from "@/modules/employees/hooks/useEmployeeMutations";
-import { MANUAL_CURRENT_STATUS_OPTIONS, type Employee } from "@/modules/employees/types/employee.types";
+import {
+  MANUAL_CURRENT_STATUS_OPTIONS,
+  type Employee,
+} from "@/modules/employees/types/employee.types";
 
 interface CurrentStatusControlProps {
   employee: Employee;
@@ -25,7 +34,11 @@ const TERMINAL_STATUSES = new Set(["terminated", "resigned"]);
 export function CurrentStatusControl({ employee, canManage }: CurrentStatusControlProps) {
   const updateMutation = useUpdateEmployeeCurrentStatusMutation();
 
-  if (!canManage || AUTO_MANAGED_STATUSES.has(employee.currentStatus) || TERMINAL_STATUSES.has(employee.currentStatus)) {
+  if (
+    !canManage ||
+    AUTO_MANAGED_STATUSES.has(employee.currentStatus) ||
+    TERMINAL_STATUSES.has(employee.currentStatus)
+  ) {
     return (
       <div className="flex items-center gap-2">
         <CurrentStatusBadge status={employee.currentStatus} />

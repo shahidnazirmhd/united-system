@@ -20,6 +20,10 @@ export const leaveTypeFormSchema = z.object({
   isPaid: z.boolean().default(true),
   requiresApproval: z.boolean().default(true),
   isActive: z.boolean().default(true),
+  // "none" is a form-only sentinel (shadcn's `Select` can't use an empty
+  // string as a value) — translated to `null` at the API-call boundary in
+  // `LeaveTypesPage.tsx`'s `handleSubmit`, never sent to the backend as-is.
+  mapsToEmployeeStatus: z.enum(["none", "sick_leave", "annual_leave"]).default("none"),
 });
 
 export type LeaveTypeFormValues = z.infer<typeof leaveTypeFormSchema>;

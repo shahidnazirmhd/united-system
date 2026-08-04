@@ -6,7 +6,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConfirmDialog, EmptyState, ErrorState, PageHeader, PageLoader } from "@/components/common";
 import { ROUTE_PATHS } from "@/app/router/routePaths";
 import { useDebouncedValue } from "@/hooks";
@@ -26,9 +32,10 @@ import type { ManagedUser, UserListFilters } from "@/modules/users/types/user.ty
 const ALL_VALUE = "__all__";
 const DEFAULT_FILTERS: UserListFilters = { page: 1, pageSize: 25 };
 
-type PendingAction =
-  | { type: "activate" | "deactivate" | "resetPassword"; user: ManagedUser }
-  | null;
+type PendingAction = {
+  type: "activate" | "deactivate" | "resetPassword";
+  user: ManagedUser;
+} | null;
 
 /**
  * User Management (Phase 12): List/Create/Edit/Activate/Deactivate/
@@ -104,7 +111,10 @@ export function UserListPage() {
   if (!canView) {
     return (
       <div>
-        <PageHeader title="Users" description="Authentication accounts for HR staff, managers, and administrators." />
+        <PageHeader
+          title="Users"
+          description="Authentication accounts for HR staff, managers, and administrators."
+        />
         <EmptyState
           icon={Lock}
           title="You don't have access to User Management"
@@ -245,18 +255,20 @@ export function UserListPage() {
               : "Send password reset?"
         }
         description={
-          pendingAction?.type === "activate" ? (
-            `${pendingAction.user.email} will regain access immediately.`
-          ) : pendingAction?.type === "deactivate" ? (
-            `${pendingAction.user.email}'s existing sessions will stop working on their very next request.`
-          ) : pendingAction ? (
-            `A password reset link will be sent to ${pendingAction.user.email} if that address is registered.`
-          ) : (
-            ""
-          )
+          pendingAction?.type === "activate"
+            ? `${pendingAction.user.email} will regain access immediately.`
+            : pendingAction?.type === "deactivate"
+              ? `${pendingAction.user.email}'s existing sessions will stop working on their very next request.`
+              : pendingAction
+                ? `A password reset link will be sent to ${pendingAction.user.email} if that address is registered.`
+                : ""
         }
         confirmLabel={
-          pendingAction?.type === "deactivate" ? "Deactivate" : pendingAction?.type === "activate" ? "Activate" : "Send"
+          pendingAction?.type === "deactivate"
+            ? "Deactivate"
+            : pendingAction?.type === "activate"
+              ? "Activate"
+              : "Send"
         }
         confirmVariant={pendingAction?.type === "deactivate" ? "destructive" : "default"}
         isConfirming={isConfirming}

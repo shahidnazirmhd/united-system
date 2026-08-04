@@ -5,7 +5,9 @@ import type { Setting } from "@/modules/settings/types/setting.types";
 
 /** `GET /api/v1/settings/` */
 export async function listSettings(): Promise<Setting[]> {
-  const response = await httpClient.get<ApiSuccessResponse<Setting[]>>(`${API_ENDPOINTS.settings}/`);
+  const response = await httpClient.get<ApiSuccessResponse<Setting[]>>(
+    `${API_ENDPOINTS.settings}/`,
+  );
   return response.data.data;
 }
 

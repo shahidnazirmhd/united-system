@@ -36,7 +36,9 @@ const UPCOMING_HOLIDAYS_REFETCH_INTERVAL_MS = 5 * 60_000;
  * widget that has already decided (via `useHasPermission`) that its caller
  * can't see this data never fires the request at all — see each widget
  * component for how it's used. */
-export function useEmployeeStatisticsQuery(enabled = true): UseQueryResult<EmployeeStatistics, ApiError> {
+export function useEmployeeStatisticsQuery(
+  enabled = true,
+): UseQueryResult<EmployeeStatistics, ApiError> {
   return useQuery({
     queryKey: [...dashboardKeys.all, "employee-statistics"] as const,
     queryFn: getEmployeeStatistics,

@@ -1,5 +1,8 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { CURRENT_STATUS_LABELS, type EmployeeCurrentStatus } from "@/modules/employees/types/employee.types";
+import {
+  CURRENT_STATUS_LABELS,
+  type EmployeeCurrentStatus,
+} from "@/modules/employees/types/employee.types";
 
 const VARIANT_BY_STATUS: Record<EmployeeCurrentStatus, NonNullable<BadgeProps["variant"]>> = {
   not_joined: "secondary",

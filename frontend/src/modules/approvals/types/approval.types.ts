@@ -50,7 +50,7 @@ export interface ApprovalStep {
   // Enrichment — populated for `decidedByEmployeeId` once decided, else
   // `approverEmployeeId` while still pending; `null` for a still-pending,
   // non-dual-mode permission-based step, which has no single employee to
-  // name yet. Lets the HR system show "Pending — Jane Doe (EMP-0042)" /
+  // name yet. Lets the HR system show "Pending — Jane Doe (E0042)" /
   // "Approved by ..." without this module needing to know it's "a
   // manager."
   approverEmployeeName: string | null;

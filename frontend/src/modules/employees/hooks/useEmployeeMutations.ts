@@ -70,7 +70,8 @@ export function useUpdateEmployeeCurrentStatusMutation(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ employeeId, currentStatus }) => updateEmployeeCurrentStatus(employeeId, currentStatus),
+    mutationFn: ({ employeeId, currentStatus }) =>
+      updateEmployeeCurrentStatus(employeeId, currentStatus),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["employees"] });
     },

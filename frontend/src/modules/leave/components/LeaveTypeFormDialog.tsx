@@ -14,9 +14,22 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { LeaveType } from "@/modules/leave/types/leave.types";
-import { leaveTypeFormSchema, type LeaveTypeFormValues } from "@/modules/leave/validation/leaveTypeSchema";
+import {
+  LEAVE_TYPE_STATUS_MAPPING_OPTIONS,
+  type LeaveType,
+} from "@/modules/leave/types/leave.types";
+import {
+  leaveTypeFormSchema,
+  type LeaveTypeFormValues,
+} from "@/modules/leave/validation/leaveTypeSchema";
 
 interface LeaveTypeFormDialogProps {
   open: boolean;
@@ -53,6 +66,7 @@ export function LeaveTypeFormDialog({
       isPaid: true,
       requiresApproval: true,
       isActive: true,
+      mapsToEmployeeStatus: "none",
     },
   });
 
@@ -65,6 +79,7 @@ export function LeaveTypeFormDialog({
         isPaid: leaveType?.isPaid ?? true,
         requiresApproval: leaveType?.requiresApproval ?? true,
         isActive: leaveType?.isActive ?? true,
+        mapsToEmployeeStatus: leaveType?.mapsToEmployeeStatus ?? "none",
       });
     }
   }, [open, leaveType, reset]);
@@ -121,13 +136,45 @@ export function LeaveTypeFormDialog({
             ) : null}
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="leave-type-status-mapping">Drives Employee Current Status</Label>
+            <Controller
+              control={control}
+              name="mapsToEmployeeStatus"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger id="leave-type-status-mapping">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {LEAVE_TYPE_STATUS_MAPPING_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              When set, an employee&apos;s Current Status automatically switches to this value while
+              an approved request of this leave type is in progress, and reverts when it ends. Leave
+              as &quot;None&quot; for leave types that shouldn&apos;t affect Current Status.
+            </p>
+          </div>
+
           <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
             <Label htmlFor="leave-type-paid">Paid</Label>
             <Controller
               control={control}
               name="isPaid"
               render={({ field }) => (
-                <Switch id="leave-type-paid" checked={field.value} onCheckedChange={field.onChange} />
+                <Switch
+                  id="leave-type-paid"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
               )}
             />
           </div>
@@ -154,7 +201,11 @@ export function LeaveTypeFormDialog({
                 control={control}
                 name="isActive"
                 render={({ field }) => (
-                  <Switch id="leave-type-active" checked={field.value} onCheckedChange={field.onChange} />
+                  <Switch
+                    id="leave-type-active"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
                 )}
               />
             </div>

@@ -24,7 +24,14 @@ interface EmployeeWireResponseForPicker {
 export async function searchActiveEmployees(search: string): Promise<LeaveEmployeeOption[]> {
   const response = await httpClient.get<ApiSuccessResponse<EmployeeWireResponseForPicker[]>>(
     `${API_ENDPOINTS.employees}/`,
-    { params: { search: search || undefined, employment_status: "active", page_size: 25, ordering: "first_name,last_name" } },
+    {
+      params: {
+        search: search || undefined,
+        employment_status: "active",
+        page_size: 25,
+        ordering: "first_name,last_name",
+      },
+    },
   );
   return response.data.data.map((wire) => ({
     id: wire.id,

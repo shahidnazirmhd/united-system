@@ -6,7 +6,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState, ErrorState, PageHeader, PageLoader } from "@/components/common";
 import { ROUTE_PATHS } from "@/app/router/routePaths";
 import { useCurrentUserQuery } from "@/lib/auth";
@@ -17,7 +23,10 @@ import { LeaveEmployeePickerField } from "@/modules/leave/components/LeaveEmploy
 import { LeaveHistoryTable } from "@/modules/leave/components/LeaveHistoryTable";
 import { useAdjustLeaveBalanceMutation } from "@/modules/leave/hooks/useLeaveBalanceAdminMutations";
 import { useApplyLeaveForEmployeeMutation } from "@/modules/leave/hooks/useLeaveMutations";
-import { useLeaveTypesQuery, useManageLeaveRequestsQuery } from "@/modules/leave/hooks/useLeaveQueries";
+import {
+  useLeaveTypesQuery,
+  useManageLeaveRequestsQuery,
+} from "@/modules/leave/hooks/useLeaveQueries";
 import type { ApplyLeaveFormValues } from "@/modules/leave/validation/applyLeaveSchema";
 import type { BalanceAdjustmentFormValues } from "@/modules/leave/validation/balanceAdjustmentSchema";
 import type {
@@ -54,7 +63,10 @@ export function LeaveDashboardPage() {
   const [filterEmployee, setFilterEmployee] = useState<LeaveEmployeeOption | null>(null);
   const [filters, setFilters] = useState<ManageLeaveRequestsFilters>(DEFAULT_FILTERS);
 
-  const effectiveFilters: ManageLeaveRequestsFilters = { ...filters, employeeId: filterEmployee?.id };
+  const effectiveFilters: ManageLeaveRequestsFilters = {
+    ...filters,
+    employeeId: filterEmployee?.id,
+  };
   const { data: leaveTypes } = useLeaveTypesQuery();
   const requestsQuery = useManageLeaveRequestsQuery(effectiveFilters);
 
@@ -79,7 +91,10 @@ export function LeaveDashboardPage() {
     );
   }
 
-  const handleApplySubmit = (values: ApplyLeaveFormValues, employee: LeaveEmployeeOption | null) => {
+  const handleApplySubmit = (
+    values: ApplyLeaveFormValues,
+    employee: LeaveEmployeeOption | null,
+  ) => {
     setApplyError(null);
     if (!employee) {
       setApplyError("Pick an employee to apply this leave for.");
@@ -105,7 +120,9 @@ export function LeaveDashboardPage() {
           setApplyDialogOpen(false);
         },
         onError: (error: unknown) => {
-          setApplyError(error instanceof ApiError ? error.message : "Could not submit this application.");
+          setApplyError(
+            error instanceof ApiError ? error.message : "Could not submit this application.",
+          );
         },
       },
     );
@@ -126,12 +143,16 @@ export function LeaveDashboardPage() {
       {
         onSuccess: (result) => {
           toast.success(
-            result.adjustmentType === "opening" ? "Leave balance opened." : "Leave balance adjusted.",
+            result.adjustmentType === "opening"
+              ? "Leave balance opened."
+              : "Leave balance adjusted.",
           );
           setBalanceDialog(null);
         },
         onError: (error) => {
-          setBalanceError(error instanceof ApiError ? error.message : "Could not save this balance change.");
+          setBalanceError(
+            error instanceof ApiError ? error.message : "Could not save this balance change.",
+          );
         },
       },
     );
@@ -244,7 +265,11 @@ export function LeaveDashboardPage() {
             type="date"
             value={filters.startDateFrom ?? ""}
             onChange={(event) =>
-              setFilters((current) => ({ ...current, startDateFrom: event.target.value || undefined, page: 1 }))
+              setFilters((current) => ({
+                ...current,
+                startDateFrom: event.target.value || undefined,
+                page: 1,
+              }))
             }
             aria-label="Start date from"
             className="w-40"
@@ -254,7 +279,11 @@ export function LeaveDashboardPage() {
             type="date"
             value={filters.startDateTo ?? ""}
             onChange={(event) =>
-              setFilters((current) => ({ ...current, startDateTo: event.target.value || undefined, page: 1 }))
+              setFilters((current) => ({
+                ...current,
+                startDateTo: event.target.value || undefined,
+                page: 1,
+              }))
             }
             aria-label="Start date to"
             className="w-40"

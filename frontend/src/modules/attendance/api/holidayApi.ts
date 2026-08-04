@@ -27,7 +27,9 @@ function toHoliday(wire: HolidayWireResponse): Holiday {
 }
 
 /** `GET /api/v1/attendance/holidays/` */
-export async function listHolidays(filters: HolidayListFilters = {}): Promise<PagedResult<Holiday>> {
+export async function listHolidays(
+  filters: HolidayListFilters = {},
+): Promise<PagedResult<Holiday>> {
   const response = await httpClient.get<ApiSuccessResponse<HolidayWireResponse[]>>(
     `${API_ENDPOINTS.attendance}/holidays/`,
     {
@@ -61,7 +63,10 @@ export async function createHoliday(input: CreateHolidayInput): Promise<Holiday>
 }
 
 /** `PATCH /api/v1/attendance/holidays/{id}/` — full-replace update. */
-export async function updateHoliday(holidayId: string, input: UpdateHolidayInput): Promise<Holiday> {
+export async function updateHoliday(
+  holidayId: string,
+  input: UpdateHolidayInput,
+): Promise<Holiday> {
   const response = await httpClient.patch<ApiSuccessResponse<HolidayWireResponse>>(
     `${API_ENDPOINTS.attendance}/holidays/${holidayId}/`,
     {

@@ -2,9 +2,17 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 
 import type { ApiError } from "@/lib/api/types";
 import { createHoliday, updateHoliday } from "@/modules/attendance/api/holidayApi";
-import type { CreateHolidayInput, Holiday, UpdateHolidayInput } from "@/modules/attendance/types/holiday.types";
+import type {
+  CreateHolidayInput,
+  Holiday,
+  UpdateHolidayInput,
+} from "@/modules/attendance/types/holiday.types";
 
-export function useCreateHolidayMutation(): UseMutationResult<Holiday, ApiError, CreateHolidayInput> {
+export function useCreateHolidayMutation(): UseMutationResult<
+  Holiday,
+  ApiError,
+  CreateHolidayInput
+> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createHoliday,

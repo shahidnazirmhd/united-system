@@ -31,7 +31,10 @@ function navLinkClassName({ isActive }: { isActive: boolean }): string {
  * number of hook calls across renders). One `useCurrentUserQuery()` call up
  * front, then this plain function per item, keeps the same permission logic
  * without that problem. */
-function isNavItemVisible(item: DashboardNavItem, heldPermissionCodes: string[] | undefined): boolean {
+function isNavItemVisible(
+  item: DashboardNavItem,
+  heldPermissionCodes: string[] | undefined,
+): boolean {
   if (!item.anyOfPermissions || item.anyOfPermissions.length === 0) {
     return true;
   }

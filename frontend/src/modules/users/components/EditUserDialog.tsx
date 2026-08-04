@@ -26,7 +26,10 @@ import {
 } from "@/modules/users/hooks/useUserMutations";
 import type { LinkableEmployee } from "@/modules/users/api/userApi";
 import type { ManagedUser } from "@/modules/users/types/user.types";
-import { updateUserFormSchema, type UpdateUserFormValues } from "@/modules/users/validation/userSchema";
+import {
+  updateUserFormSchema,
+  type UpdateUserFormValues,
+} from "@/modules/users/validation/userSchema";
 
 interface EditUserDialogProps {
   open: boolean;
@@ -77,7 +80,8 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
     }
   }, [open, user, reset]);
 
-  const isSubmitting = updateMutation.isPending || linkMutation.isPending || syncRolesMutation.isPending;
+  const isSubmitting =
+    updateMutation.isPending || linkMutation.isPending || syncRolesMutation.isPending;
 
   const onValid = handleSubmit(async (values) => {
     if (!user) return;
@@ -119,7 +123,9 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit user</DialogTitle>
-          <DialogDescription>Updates this account's email, employee link, and roles.</DialogDescription>
+          <DialogDescription>
+            Updates this account's email, employee link, and roles.
+          </DialogDescription>
         </DialogHeader>
 
         <form
@@ -146,7 +152,9 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
               aria-invalid={Boolean(errors.email)}
               {...register("email")}
             />
-            {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+            {errors.email ? (
+              <p className="text-sm text-destructive">{errors.email.message}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">

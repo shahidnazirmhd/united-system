@@ -35,12 +35,21 @@ export function PendingApprovalsCard() {
     >
       <ul className="divide-y divide-border">
         {(data ?? []).slice(0, 5).map((request) => (
-          <li key={request.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+          <li
+            key={request.id}
+            className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+          >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">{request.subjectSummary}</p>
+              <p className="truncate text-sm font-medium text-foreground">
+                {request.subjectSummary}
+              </p>
               <p className="text-xs text-muted-foreground">Level {request.currentLevel}</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => navigate(ROUTE_PATHS.dashboard.approvals)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(ROUTE_PATHS.dashboard.approvals)}
+            >
               Review
             </Button>
           </li>

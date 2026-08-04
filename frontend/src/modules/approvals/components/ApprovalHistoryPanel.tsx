@@ -65,7 +65,8 @@ function isDecidableByCurrentUser(
     return currentStep.approverEmployeeId === currentEmployeeId;
   }
   if (currentStep.approverEmployeeId) return currentStep.approverEmployeeId === currentEmployeeId;
-  if (currentStep.approverPermissionCode) return heldPermissionCodes.includes(currentStep.approverPermissionCode);
+  if (currentStep.approverPermissionCode)
+    return heldPermissionCodes.includes(currentStep.approverPermissionCode);
   return false;
 }
 
@@ -89,7 +90,8 @@ function approverDisplayLine(step: ApprovalRequest["steps"][number]): string | n
   // requester withdrew it), not decided by `who` — worth saying explicitly
   // rather than falling through to "Awaiting decision", which would be
   // actively wrong once nothing is being awaited any more.
-  if (step.status === "cancelled") return `No longer needed — the request was cancelled (was awaiting ${who})`;
+  if (step.status === "cancelled")
+    return `No longer needed — the request was cancelled (was awaiting ${who})`;
   return `Awaiting decision from ${who}`;
 }
 
@@ -109,7 +111,10 @@ function approverDisplayLine(step: ApprovalRequest["steps"][number]): string | n
  * in the generic "My Pending Approvals" inbox.
  */
 export function ApprovalHistoryPanel({ subjectType, subjectId }: ApprovalHistoryPanelProps) {
-  const { data, isLoading, isError, refetch } = useApprovalHistoryBySubjectQuery(subjectType, subjectId);
+  const { data, isLoading, isError, refetch } = useApprovalHistoryBySubjectQuery(
+    subjectType,
+    subjectId,
+  );
   const { data: currentUser } = useCurrentUserQuery();
   const decideMutation = useDecideApprovalMutation();
   const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
@@ -129,7 +134,9 @@ export function ApprovalHistoryPanel({ subjectType, subjectId }: ApprovalHistory
     );
   }
   if (!data || data.length === 0) {
-    return <p className="text-sm text-muted-foreground">No approval history for this request yet.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">No approval history for this request yet.</p>
+    );
   }
 
   const decidingRequest = data.find((request) => request.id === decidingRequestId);
@@ -145,7 +152,9 @@ export function ApprovalHistoryPanel({ subjectType, subjectId }: ApprovalHistory
           setDecidingRequestId(null);
         },
         onError: (error) => {
-          setDecideError(error instanceof ApiError ? error.message : "Could not record this decision.");
+          setDecideError(
+            error instanceof ApiError ? error.message : "Could not record this decision.",
+          );
         },
       },
     );
@@ -179,7 +188,9 @@ export function ApprovalHistoryPanel({ subjectType, subjectId }: ApprovalHistory
                   <li key={step.id} className="flex items-start justify-between gap-4 text-sm">
                     <div>
                       <div className="font-medium text-foreground">Level {step.level}</div>
-                      {approverLine ? <p className="mt-1 text-muted-foreground">{approverLine}</p> : null}
+                      {approverLine ? (
+                        <p className="mt-1 text-muted-foreground">{approverLine}</p>
+                      ) : null}
                       {step.comments ? (
                         <p className="mt-1 text-muted-foreground">&ldquo;{step.comments}&rdquo;</p>
                       ) : null}

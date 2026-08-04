@@ -3,7 +3,10 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import type { ApiError } from "@/lib/api/types";
 import { adjustLeaveBalance } from "@/modules/leave/api/leaveApi";
 import { leaveKeys } from "@/modules/leave/hooks/useLeaveQueries";
-import type { AdjustLeaveBalanceInput, LeaveBalanceAdjustment } from "@/modules/leave/types/leave.types";
+import type {
+  AdjustLeaveBalanceInput,
+  LeaveBalanceAdjustment,
+} from "@/modules/leave/types/leave.types";
 
 /** Backs both "Leave Balance Adjustment" and "Leave Balance Opening" —
  * one API call, two UI entry points (see BalanceAdjustmentDialog.tsx). */

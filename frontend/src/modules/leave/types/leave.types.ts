@@ -12,6 +12,21 @@ export const LEAVE_REQUEST_STATUS_OPTIONS: { value: LeaveRequestStatus; label: s
   { value: "cancelled", label: "Cancelled" },
 ];
 
+/** Which Employee Current Status an approved request of this leave type
+ * drives while it's in progress — mirrors the backend's
+ * `domain/employee_status_mapping.py.ALLOWED_EMPLOYEE_STATUS_MAPPINGS`
+ * exactly. `null` means this leave type never changes Current Status at
+ * all (e.g. an unpaid leave type HR doesn't want reflected there). */
+export type LeaveTypeStatusMapping = "sick_leave" | "annual_leave" | null;
+
+export const LEAVE_TYPE_STATUS_MAPPING_OPTIONS: {
+  value: NonNullable<LeaveTypeStatusMapping>;
+  label: string;
+}[] = [
+  { value: "sick_leave", label: "Sick Leave" },
+  { value: "annual_leave", label: "Annual Leave" },
+];
+
 export interface LeaveType {
   id: string;
   name: string;
@@ -20,6 +35,7 @@ export interface LeaveType {
   isPaid: boolean;
   requiresApproval: boolean;
   isActive: boolean;
+  mapsToEmployeeStatus: LeaveTypeStatusMapping;
 }
 
 export interface LeaveBalance {
@@ -60,6 +76,39 @@ export interface LeaveRequest {
   // context from the caller.
   employeeName: string | null;
   employeeCode: string | null;
+  // --- HR Leave Workflow round (skip-level-1 + initiator tracking) -------
+  level1Skipped: boolean;
+  /** e.g. "no_manager_assigned" / "manager_not_linked_to_telegram" — see
+   * `LEVEL1_SKIP_REASON_LABELS` below for the display string. */
+  level1SkipReason: string | null;
+  /** Which channel submitted this request — `"hr"` (an HR/Admin user
+   * applying on an employee's behalf) or `"telegram"` (the employee
+   * themself, via the bot). `null` for ordinary self-service web apply —
+   * no special "initiated by" block is shown for that case. */
+  initiatedVia: "hr" | "telegram" | null;
+  initiatorUserId: string | null;
+  initiatorTelegramUserId: number | null;
+  /** Resolved display name for `initiatedVia === "hr"` only, e.g.
+   * "Jane Doe (E0031)". `null` for `"telegram"` (show the raw
+   * `initiatorTelegramUserId` instead) or ordinary self-service. */
+  initiatorDisplayName: string | null;
+}
+
+/** HR Leave Workflow round, item 1 — user-facing copy for each
+ * `level1SkipReason` code the backend may send, reused verbatim wherever
+ * the skip is displayed (Leave Details, Leave History, the pre-submit
+ * confirmation dialog). Falls back to the raw code itself if a future
+ * backend reason isn't in this map yet, rather than showing nothing. */
+export const LEVEL1_SKIP_REASON_LABELS: Record<string, string> = {
+  no_manager_assigned: "No manager assigned",
+  manager_not_linked_to_telegram: "Manager has not linked their Telegram account",
+};
+
+/** HR Leave Workflow round, item 1 — backs the pre-submit confirmation
+ * dialog's preview call (`GET .../level1-approval-check/`). */
+export interface Level1ApprovalCheck {
+  willSkipLevel1: boolean;
+  skipReason: string | null;
 }
 
 export interface LeaveHistoryFilters {
@@ -108,6 +157,7 @@ export interface CreateLeaveTypeInput {
   defaultAnnualDays: string;
   isPaid: boolean;
   requiresApproval: boolean;
+  mapsToEmployeeStatus: LeaveTypeStatusMapping;
 }
 
 export interface UpdateLeaveTypeInput extends CreateLeaveTypeInput {

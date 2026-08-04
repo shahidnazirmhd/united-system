@@ -1,4 +1,10 @@
-import { CalendarDays, CalendarPlus, ClipboardCheck, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarPlus,
+  ClipboardCheck,
+  UserPlus,
+  type LucideIcon,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { ROUTE_PATHS } from "@/app/router/routePaths";

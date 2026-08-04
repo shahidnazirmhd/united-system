@@ -49,7 +49,9 @@ const UserListPage = lazy(() =>
 );
 // Role & Permission Management phase — a sub-view of Users, same
 // lazy-loading convention, mirrors DepartmentsPage's placement under Employees.
-const RolesPage = lazy(() => import("@/modules/users").then((module) => ({ default: module.RolesPage })));
+const RolesPage = lazy(() =>
+  import("@/modules/users").then((module) => ({ default: module.RolesPage })),
+);
 
 // Phase 13 — Leave Management + Approvals. Same lazy-loading convention.
 const LeaveDashboardPage = lazy(() =>

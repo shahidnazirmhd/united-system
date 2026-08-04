@@ -20,7 +20,9 @@ export function useEmployeesQuery(
   });
 }
 
-export function useEmployeeQuery(employeeId: string | undefined): UseQueryResult<Employee, ApiError> {
+export function useEmployeeQuery(
+  employeeId: string | undefined,
+): UseQueryResult<Employee, ApiError> {
   return useQuery({
     queryKey: ["employees", "detail", employeeId],
     queryFn: () => getEmployeeById(employeeId as string),
@@ -53,7 +55,9 @@ export function useAllEmployeesQuery(): UseQueryResult<PagedResult<Employee>, Ap
  * EMPLOYEE_API.md), capped to a small page since this only ever feeds a
  * dropdown of matches, not a full listing.
  */
-export function useEmployeeSearchQuery(search: string): UseQueryResult<PagedResult<Employee>, ApiError> {
+export function useEmployeeSearchQuery(
+  search: string,
+): UseQueryResult<PagedResult<Employee>, ApiError> {
   return useQuery({
     queryKey: ["employees", "list", "search", search, { pageSize: 10 }],
     queryFn: () => listEmployees({ search, pageSize: 10, ordering: "first_name,last_name" }),

@@ -2,7 +2,13 @@ import { Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks";
 import { useAllDepartmentsQuery } from "@/modules/employees/hooks/useDepartmentQueries";
@@ -66,7 +72,11 @@ export function EmployeeFiltersBar({ filters, onFiltersChange }: EmployeeFilters
       <Select
         value={filters.departmentId ?? ALL_VALUE}
         onValueChange={(value) =>
-          onFiltersChange({ ...filters, departmentId: value === ALL_VALUE ? undefined : value, page: 1 })
+          onFiltersChange({
+            ...filters,
+            departmentId: value === ALL_VALUE ? undefined : value,
+            page: 1,
+          })
         }
       >
         <SelectTrigger className="w-full sm:w-48" aria-label="Filter by department">
@@ -87,7 +97,8 @@ export function EmployeeFiltersBar({ filters, onFiltersChange }: EmployeeFilters
         onValueChange={(value) =>
           onFiltersChange({
             ...filters,
-            employmentStatus: value === ALL_VALUE ? undefined : (value as EmployeeListFilters["employmentStatus"]),
+            employmentStatus:
+              value === ALL_VALUE ? undefined : (value as EmployeeListFilters["employmentStatus"]),
             page: 1,
           })
         }
@@ -110,7 +121,8 @@ export function EmployeeFiltersBar({ filters, onFiltersChange }: EmployeeFilters
         onValueChange={(value) =>
           onFiltersChange({
             ...filters,
-            employmentType: value === ALL_VALUE ? undefined : (value as EmployeeListFilters["employmentType"]),
+            employmentType:
+              value === ALL_VALUE ? undefined : (value as EmployeeListFilters["employmentType"]),
             page: 1,
           })
         }

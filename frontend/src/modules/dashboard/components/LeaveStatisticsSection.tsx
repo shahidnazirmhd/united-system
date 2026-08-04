@@ -28,9 +28,19 @@ export function LeaveStatisticsSection() {
     <section className="space-y-4">
       <h2 className="text-lg font-semibold tracking-tight text-foreground">Leave Statistics</h2>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="On Leave Today" value={data?.onLeaveTodayCount ?? 0} icon={CalendarDays} isLoading={isLoading} />
+        <KpiCard
+          label="On Leave Today"
+          value={data?.onLeaveTodayCount ?? 0}
+          icon={CalendarDays}
+          isLoading={isLoading}
+        />
         <KpiCard label="Pending Requests" value={pendingCount} icon={Clock} isLoading={isLoading} />
-        <KpiCard label="Approved Requests" value={approvedCount} icon={CheckCircle2} isLoading={isLoading} />
+        <KpiCard
+          label="Approved Requests"
+          value={approvedCount}
+          icon={CheckCircle2}
+          isLoading={isLoading}
+        />
         <KpiCard
           label="Total Requests"
           value={Object.values(data?.statusBreakdown ?? {}).reduce((sum, count) => sum + count, 0)}

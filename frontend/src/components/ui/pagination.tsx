@@ -18,7 +18,13 @@ export interface PaginationProps {
  * `lib/api/types.ts`'s `PaginationMetaResponse`) — one component, driven
  * entirely by that one shape, rather than a bespoke pager per screen.
  */
-export function Pagination({ page, totalPages, totalCount, pageSize, onPageChange }: PaginationProps) {
+export function Pagination({
+  page,
+  totalPages,
+  totalCount,
+  pageSize,
+  onPageChange,
+}: PaginationProps) {
   if (totalCount === 0) {
     return null;
   }

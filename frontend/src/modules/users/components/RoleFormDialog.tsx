@@ -159,7 +159,9 @@ export function RoleFormDialog({
                                 }}
                               />
                               <span>
-                                <span className="font-medium text-foreground">{permission.code}</span>
+                                <span className="font-medium text-foreground">
+                                  {permission.code}
+                                </span>
                                 {permission.description ? (
                                   <span className="block text-xs text-muted-foreground">
                                     {permission.description}

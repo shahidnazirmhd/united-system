@@ -1,11 +1,24 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { LeaveType } from "@/modules/leave/types/leave.types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type { LeaveType, LeaveTypeStatusMapping } from "@/modules/leave/types/leave.types";
 
 interface LeaveTypeTableProps {
   leaveTypes: LeaveType[];
   onEdit: (leaveType: LeaveType) => void;
+}
+
+function statusMappingLabel(mapping: LeaveTypeStatusMapping): string {
+  if (mapping === "sick_leave") return "Sick Leave";
+  if (mapping === "annual_leave") return "Annual Leave";
+  return "—";
 }
 
 export function LeaveTypeTable({ leaveTypes, onEdit }: LeaveTypeTableProps) {
@@ -18,6 +31,7 @@ export function LeaveTypeTable({ leaveTypes, onEdit }: LeaveTypeTableProps) {
           <TableHead>Default annual days</TableHead>
           <TableHead>Paid</TableHead>
           <TableHead>Requires approval</TableHead>
+          <TableHead>Drives Current Status</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
@@ -30,6 +44,7 @@ export function LeaveTypeTable({ leaveTypes, onEdit }: LeaveTypeTableProps) {
             <TableCell>{leaveType.defaultAnnualDays}</TableCell>
             <TableCell>{leaveType.isPaid ? "Yes" : "No"}</TableCell>
             <TableCell>{leaveType.requiresApproval ? "Yes" : "No"}</TableCell>
+            <TableCell>{statusMappingLabel(leaveType.mapsToEmployeeStatus)}</TableCell>
             <TableCell>
               <Badge variant={leaveType.isActive ? "success" : "secondary"}>
                 {leaveType.isActive ? "Active" : "Inactive"}

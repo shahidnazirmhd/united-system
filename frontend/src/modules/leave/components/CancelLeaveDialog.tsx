@@ -49,7 +49,8 @@ export function CancelLeaveDialog({
         <DialogHeader>
           <DialogTitle>Cancel leave request</DialogTitle>
           <DialogDescription>
-            {leaveRequest.leaveTypeName ?? "Leave"}: {leaveRequest.startDate} → {leaveRequest.endDate}.{" "}
+            {leaveRequest.leaveTypeName ?? "Leave"}: {leaveRequest.startDate} →{" "}
+            {leaveRequest.endDate}.{" "}
             {leaveRequest.status === "approved"
               ? "This request is already approved — cancelling will restore the balance it consumed."
               : "This request is still pending — cancelling will also close its approval process; " +
@@ -80,7 +81,11 @@ export function CancelLeaveDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Keep request
           </Button>
-          <Button variant="destructive" disabled={isSubmitting} onClick={() => onConfirm(reason.trim() || null)}>
+          <Button
+            variant="destructive"
+            disabled={isSubmitting}
+            onClick={() => onConfirm(reason.trim() || null)}
+          >
             {isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
             Cancel leave
           </Button>

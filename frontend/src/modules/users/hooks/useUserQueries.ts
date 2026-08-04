@@ -5,7 +5,9 @@ import { getUserById, listUsers, searchEmployeesForLinking } from "@/modules/use
 import type { ManagedUser, UserListFilters } from "@/modules/users/types/user.types";
 import type { LinkableEmployee } from "@/modules/users/api/userApi";
 
-export function useUsersQuery(filters: UserListFilters): UseQueryResult<PagedResult<ManagedUser>, ApiError> {
+export function useUsersQuery(
+  filters: UserListFilters,
+): UseQueryResult<PagedResult<ManagedUser>, ApiError> {
   return useQuery({
     queryKey: ["users", "list", filters],
     queryFn: () => listUsers(filters),
@@ -22,7 +24,9 @@ export function useUserQuery(userId: string | undefined): UseQueryResult<Managed
 }
 
 /** Feeds the "Link to Employee" dialog's search-as-you-type employee picker. */
-export function useLinkableEmployeesQuery(search: string): UseQueryResult<LinkableEmployee[], ApiError> {
+export function useLinkableEmployeesQuery(
+  search: string,
+): UseQueryResult<LinkableEmployee[], ApiError> {
   return useQuery({
     queryKey: ["employees", "linkable", search],
     queryFn: () => searchEmployeesForLinking(search),

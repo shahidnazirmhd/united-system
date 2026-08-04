@@ -1,12 +1,7 @@
 import axios, { type AxiosError, type AxiosRequestConfig } from "axios";
 
 import { env } from "@/config/env";
-import {
-  clearTokenPair,
-  getAccessToken,
-  getRefreshToken,
-  setTokenPair,
-} from "@/lib/api/authToken";
+import { clearTokenPair, getAccessToken, getRefreshToken, setTokenPair } from "@/lib/api/authToken";
 import { ApiError, type ApiErrorResponse, type ApiSuccessResponse } from "@/lib/api/types";
 import { emitSessionExpired } from "@/lib/auth/sessionEvents";
 

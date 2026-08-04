@@ -1,10 +1,18 @@
+import { AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { buildLeaveRequestDetailPath } from "@/app/router/routePaths";
 import { LeaveStatusBadge } from "@/modules/leave/components/LeaveStatusBadge";
-import type { LeaveRequest } from "@/modules/leave/types/leave.types";
+import { LEVEL1_SKIP_REASON_LABELS, type LeaveRequest } from "@/modules/leave/types/leave.types";
 
 interface LeaveHistoryTableProps {
   requests: LeaveRequest[];
@@ -18,7 +26,11 @@ interface LeaveHistoryTableProps {
 
 const CANCELLABLE_STATUSES = new Set(["pending", "approved"]);
 
-export function LeaveHistoryTable({ requests, onCancel, showEmployeeColumn = false }: LeaveHistoryTableProps) {
+export function LeaveHistoryTable({
+  requests,
+  onCancel,
+  showEmployeeColumn = false,
+}: LeaveHistoryTableProps) {
   const navigate = useNavigate();
 
   return (
@@ -50,7 +62,26 @@ export function LeaveHistoryTable({ requests, onCancel, showEmployeeColumn = fal
             <TableCell>{request.totalDays}</TableCell>
             <TableCell>{request.workingDays}</TableCell>
             <TableCell>
-              <LeaveStatusBadge status={request.status} />
+              <div className="flex items-center gap-1.5">
+                <LeaveStatusBadge status={request.status} />
+                {request.level1Skipped ? (
+                  // lucide-react icons don't accept a `title` prop directly
+                  // (it's not part of LucideProps) — wrap in a plain <span>
+                  // so the native browser tooltip still works.
+                  <span
+                    title={`Level 1 approval skipped${
+                      request.level1SkipReason
+                        ? ` — ${LEVEL1_SKIP_REASON_LABELS[request.level1SkipReason] ?? request.level1SkipReason}`
+                        : ""
+                    }`}
+                  >
+                    <AlertTriangle
+                      className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                      aria-hidden="true"
+                    />
+                  </span>
+                ) : null}
+              </div>
             </TableCell>
             <TableCell className="text-right">
               <div className="flex justify-end gap-2">

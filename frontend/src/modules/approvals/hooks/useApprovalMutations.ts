@@ -3,7 +3,10 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import type { ApiError } from "@/lib/api/types";
 import { decideApprovalRequest } from "@/modules/approvals/api/approvalApi";
 import { approvalKeys } from "@/modules/approvals/hooks/useApprovalQueries";
-import type { ApprovalRequest, DecideApprovalInput } from "@/modules/approvals/types/approval.types";
+import type {
+  ApprovalRequest,
+  DecideApprovalInput,
+} from "@/modules/approvals/types/approval.types";
 
 export function useDecideApprovalMutation(): UseMutationResult<
   ApprovalRequest,

@@ -17,7 +17,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { Holiday } from "@/modules/attendance/types/holiday.types";
-import { holidayFormSchema, type HolidayFormValues } from "@/modules/attendance/validation/holidaySchema";
+import {
+  holidayFormSchema,
+  type HolidayFormValues,
+} from "@/modules/attendance/validation/holidaySchema";
 
 interface HolidayFormDialogProps {
   open: boolean;
@@ -124,7 +127,11 @@ export function HolidayFormDialog({
                 control={control}
                 name="isActive"
                 render={({ field }) => (
-                  <Switch id="holiday-active" checked={field.value} onCheckedChange={field.onChange} />
+                  <Switch
+                    id="holiday-active"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
                 )}
               />
             </div>

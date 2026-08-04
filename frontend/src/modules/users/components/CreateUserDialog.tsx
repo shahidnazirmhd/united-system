@@ -20,7 +20,10 @@ import { RoleCheckboxList } from "@/modules/users/components/RoleCheckboxList";
 import { useCreateUserWithAssignmentsMutation } from "@/modules/users/hooks/useUserMutations";
 import { useRolesQuery } from "@/modules/users/hooks/useRoleQueries";
 import type { LinkableEmployee } from "@/modules/users/api/userApi";
-import { createUserFormSchema, type CreateUserFormValues } from "@/modules/users/validation/userSchema";
+import {
+  createUserFormSchema,
+  type CreateUserFormValues,
+} from "@/modules/users/validation/userSchema";
 
 interface CreateUserDialogProps {
   open: boolean;
@@ -89,8 +92,8 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
           <DialogTitle>New user</DialogTitle>
           <DialogDescription>
             Provisions a new authentication account. This is not the same as creating an employee
-            record. You can optionally link an existing employee and assign roles now, or do
-            either later.
+            record. You can optionally link an existing employee and assign roles now, or do either
+            later.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,7 +121,9 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
               aria-invalid={Boolean(errors.email)}
               {...register("email")}
             />
-            {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+            {errors.email ? (
+              <p className="text-sm text-destructive">{errors.email.message}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">

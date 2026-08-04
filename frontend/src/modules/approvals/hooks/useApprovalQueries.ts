@@ -34,7 +34,10 @@ export function useApprovalRequestDetailQuery(approvalRequestId: string | undefi
 /** Backs Leave Request Detail's approval-history panel — see
  * `listApprovalHistoryForSubject`'s own docstring for why an empty result
  * is a normal, non-error outcome. */
-export function useApprovalHistoryBySubjectQuery(subjectType: string, subjectId: string | undefined) {
+export function useApprovalHistoryBySubjectQuery(
+  subjectType: string,
+  subjectId: string | undefined,
+) {
   return useQuery({
     queryKey: [...approvalKeys.all, "by-subject", subjectType, subjectId ?? ""] as const,
     queryFn: () => listApprovalHistoryForSubject(subjectType, subjectId as string),

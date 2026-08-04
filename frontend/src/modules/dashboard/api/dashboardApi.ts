@@ -38,13 +38,11 @@ function toEmployeeStatistics(wire: EmployeeStatisticsWireResponse): EmployeeSta
     statusBreakdown: wire.status_breakdown,
     currentStatusBreakdown: wire.current_status_breakdown,
     employmentTypeBreakdown: wire.employment_type_breakdown,
-    departmentBreakdown: wire.department_breakdown.map(
-      (stat): EmployeeDepartmentStat => ({
-        departmentId: stat.department_id,
-        departmentName: stat.department_name,
-        count: stat.count,
-      }),
-    ),
+    departmentBreakdown: wire.department_breakdown.map((stat): EmployeeDepartmentStat => ({
+      departmentId: stat.department_id,
+      departmentName: stat.department_name,
+      count: stat.count,
+    })),
     newHiresThisMonth: wire.new_hires_this_month,
   };
 }
@@ -70,14 +68,15 @@ interface LeaveStatisticsWireResponse {
 function toLeaveStatistics(wire: LeaveStatisticsWireResponse): LeaveStatistics {
   return {
     statusBreakdown: wire.status_breakdown,
-    leaveTypeBreakdown: wire.leave_type_breakdown.map(
-      (stat): LeaveTypeStat => ({
-        leaveTypeId: stat.leave_type_id,
-        leaveTypeName: stat.leave_type_name,
-        count: stat.count,
-      }),
-    ),
-    monthlyTrend: wire.monthly_trend.map((stat): LeaveMonthlyStat => ({ month: stat.month, count: stat.count })),
+    leaveTypeBreakdown: wire.leave_type_breakdown.map((stat): LeaveTypeStat => ({
+      leaveTypeId: stat.leave_type_id,
+      leaveTypeName: stat.leave_type_name,
+      count: stat.count,
+    })),
+    monthlyTrend: wire.monthly_trend.map((stat): LeaveMonthlyStat => ({
+      month: stat.month,
+      count: stat.count,
+    })),
     onLeaveTodayCount: wire.on_leave_today_count,
   };
 }
@@ -116,7 +115,12 @@ interface UpcomingHolidayWireResponse {
 }
 
 function toUpcomingHoliday(wire: UpcomingHolidayWireResponse): UpcomingHoliday {
-  return { id: wire.id, name: wire.name, holidayDate: wire.holiday_date, description: wire.description };
+  return {
+    id: wire.id,
+    name: wire.name,
+    holidayDate: wire.holiday_date,
+    description: wire.description,
+  };
 }
 
 /** `GET /api/v1/dashboard/employee-statistics/` */

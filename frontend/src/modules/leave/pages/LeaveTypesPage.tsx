@@ -6,14 +6,23 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState, ErrorState, PageHeader, PageLoader } from "@/components/common";
 import { ROUTE_PATHS } from "@/app/router/routePaths";
 import { ApiError } from "@/lib/api/types";
 import { useDebouncedValue } from "@/hooks";
 import { LeaveTypeFormDialog } from "@/modules/leave/components/LeaveTypeFormDialog";
 import { LeaveTypeTable } from "@/modules/leave/components/LeaveTypeTable";
-import { useCreateLeaveTypeMutation, useUpdateLeaveTypeMutation } from "@/modules/leave/hooks/useLeaveTypeMutations";
+import {
+  useCreateLeaveTypeMutation,
+  useUpdateLeaveTypeMutation,
+} from "@/modules/leave/hooks/useLeaveTypeMutations";
 import { useManagedLeaveTypesQuery } from "@/modules/leave/hooks/useLeaveTypeQueries";
 import type { LeaveType, LeaveTypeListFilters } from "@/modules/leave/types/leave.types";
 import type { LeaveTypeFormValues } from "@/modules/leave/validation/leaveTypeSchema";
@@ -35,7 +44,10 @@ export function LeaveTypesPage() {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput);
 
-  const effectiveFilters: LeaveTypeListFilters = { ...filters, search: debouncedSearch || undefined };
+  const effectiveFilters: LeaveTypeListFilters = {
+    ...filters,
+    search: debouncedSearch || undefined,
+  };
   const { data, isLoading, isError, refetch } = useManagedLeaveTypesQuery(effectiveFilters);
   const createMutation = useCreateLeaveTypeMutation();
   const updateMutation = useUpdateLeaveTypeMutation();
@@ -64,9 +76,17 @@ export function LeaveTypesPage() {
         setDialogOpen(false);
       },
       onError: (error: unknown) => {
-        setSubmitError(error instanceof ApiError ? error.message : "Could not save this leave type.");
+        setSubmitError(
+          error instanceof ApiError ? error.message : "Could not save this leave type.",
+        );
       },
     };
+
+    // "none" is a form-only sentinel (shadcn's `Select` can't use an empty
+    // string as a value) — translate to `null` here, the one place this
+    // form's values cross into the wire-shaped API input.
+    const mapsToEmployeeStatus =
+      values.mapsToEmployeeStatus === "none" ? null : values.mapsToEmployeeStatus;
 
     if (editingLeaveType) {
       updateMutation.mutate(
@@ -79,6 +99,7 @@ export function LeaveTypesPage() {
             isPaid: values.isPaid,
             requiresApproval: values.requiresApproval,
             isActive: values.isActive,
+            mapsToEmployeeStatus,
           },
         },
         onSettled,
@@ -91,6 +112,7 @@ export function LeaveTypesPage() {
           defaultAnnualDays: values.defaultAnnualDays,
           isPaid: values.isPaid,
           requiresApproval: values.requiresApproval,
+          mapsToEmployeeStatus,
         },
         onSettled,
       );

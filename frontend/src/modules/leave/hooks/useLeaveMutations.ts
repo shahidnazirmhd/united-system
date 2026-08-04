@@ -8,13 +8,21 @@ import {
   cancelLeaveRequestForEmployee,
 } from "@/modules/leave/api/leaveApi";
 import { leaveKeys } from "@/modules/leave/hooks/useLeaveQueries";
-import type { ApplyLeaveInput, CancelLeaveInput, LeaveRequest } from "@/modules/leave/types/leave.types";
+import type {
+  ApplyLeaveInput,
+  CancelLeaveInput,
+  LeaveRequest,
+} from "@/modules/leave/types/leave.types";
 
 function invalidateLeave(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: leaveKeys.all });
 }
 
-export function useApplyLeaveMutation(): UseMutationResult<LeaveRequest, ApiError, ApplyLeaveInput> {
+export function useApplyLeaveMutation(): UseMutationResult<
+  LeaveRequest,
+  ApiError,
+  ApplyLeaveInput
+> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: applyLeave,

@@ -19,7 +19,11 @@ export const employeeFormSchema = z.object({
   lastName: z.string().trim().min(1, "Last name is required").max(100),
   dateOfBirth: optionalText,
   gender: optionalText,
-  workEmail: z.string().trim().min(1, "Work email is required").email("Enter a valid email address"),
+  workEmail: z
+    .string()
+    .trim()
+    .min(1, "Work email is required")
+    .email("Enter a valid email address"),
   personalEmail: z
     .string()
     .trim()

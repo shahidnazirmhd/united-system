@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
@@ -14,11 +14,25 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { LeaveEmployeePickerField } from "@/modules/leave/components/LeaveEmployeePickerField";
-import type { LeaveEmployeeOption, LeaveType } from "@/modules/leave/types/leave.types";
-import { applyLeaveFormSchema, type ApplyLeaveFormValues } from "@/modules/leave/validation/applyLeaveSchema";
+import { useLevel1ApprovalCheckQuery } from "@/modules/leave/hooks/useLeaveQueries";
+import {
+  LEVEL1_SKIP_REASON_LABELS,
+  type LeaveEmployeeOption,
+  type LeaveType,
+} from "@/modules/leave/types/leave.types";
+import {
+  applyLeaveFormSchema,
+  type ApplyLeaveFormValues,
+} from "@/modules/leave/validation/applyLeaveSchema";
 
 interface ApplyLeaveDialogProps {
   open: boolean;
@@ -48,6 +62,12 @@ export function ApplyLeaveDialog({
   submitError,
 }: ApplyLeaveDialogProps) {
   const [selectedEmployee, setSelectedEmployee] = useState<LeaveEmployeeOption | null>(null);
+  // HR Leave Workflow round, item 1 — set only when this HR-on-behalf
+  // application's Level 1 approval will be skipped and the user hasn't yet
+  // confirmed submission. Holding the validated form values here (rather
+  // than immediately submitting) lets the confirmation step re-use the
+  // exact same values the user already filled in once they confirm.
+  const [pendingSubmission, setPendingSubmission] = useState<ApplyLeaveFormValues | null>(null);
 
   const {
     register,
@@ -65,10 +85,42 @@ export function ApplyLeaveDialog({
     if (open) {
       reset({ leaveTypeId: "", startDate: "", endDate: "", reason: "" });
       setSelectedEmployee(null);
+      setPendingSubmission(null);
     }
   }, [open, reset]);
 
-  const onValid = handleSubmit((values) => onSubmit(values, selectedEmployee));
+  // Only meaningful for the HR-on-behalf flow — self-service apply never
+  // renders the employee picker at all, so this stays disabled (no
+  // employeeId) for that case.
+  const level1Check = useLevel1ApprovalCheckQuery(
+    allowEmployeeSelection ? (selectedEmployee?.id ?? undefined) : undefined,
+  );
+  const willSkipLevel1 = allowEmployeeSelection && (level1Check.data?.willSkipLevel1 ?? false);
+  const skipReasonLabel = level1Check.data?.skipReason
+    ? (LEVEL1_SKIP_REASON_LABELS[level1Check.data.skipReason] ?? level1Check.data.skipReason)
+    : null;
+
+  const onValid = handleSubmit((values) => {
+    if (willSkipLevel1) {
+      // Requirement: show a confirmation dialog explaining the skip before
+      // submitting — handled by swapping the form for a confirmation panel
+      // below (see the `pendingSubmission` render branch), rather than a
+      // second nested Dialog.
+      setPendingSubmission(values);
+      return;
+    }
+    onSubmit(values, selectedEmployee);
+  });
+
+  const handleConfirmSkipAndSubmit = () => {
+    if (pendingSubmission) {
+      onSubmit(pendingSubmission, selectedEmployee);
+      // Reset immediately rather than waiting for the mutation to settle —
+      // if it fails, `submitError` renders over the ordinary form again
+      // (below), which is where the user expects to see it and retry from.
+      setPendingSubmission(null);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,87 +134,139 @@ export function ApplyLeaveDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form
-          className="space-y-4"
-          noValidate
-          onSubmit={(event) => {
-            void onValid(event);
-          }}
-        >
-          {submitError ? (
+        {pendingSubmission ? (
+          // HR Leave Workflow round, item 1 — the required pre-submit
+          // confirmation step, shown in place of the form once the user has
+          // submitted valid values for an employee whose Level 1 approval
+          // will be skipped. Explains why, and requires an explicit second
+          // action before anything is actually sent.
+          <div className="space-y-4">
             <div
               role="alert"
-              className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200"
             >
-              {submitError}
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>
+                Level 1 (manager) approval will be skipped for this request
+                {skipReasonLabel ? ` — ${skipReasonLabel}` : ""}. It will go directly to Level 2
+                (HR/Admin) approval instead.
+              </span>
             </div>
-          ) : null}
-
-          {allowEmployeeSelection ? (
-            <div className="space-y-2">
-              <Label>Employee (optional — leave blank to apply for yourself)</Label>
-              <LeaveEmployeePickerField selected={selectedEmployee} onSelect={setSelectedEmployee} />
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="apply-leave-type">Leave type</Label>
-            <Controller
-              control={control}
-              name="leaveTypeId"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger id="apply-leave-type" aria-invalid={Boolean(errors.leaveTypeId)}>
-                    <SelectValue placeholder="Select a leave type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {leaveTypes.map((leaveType) => (
-                      <SelectItem key={leaveType.id} value={leaveType.id}>
-                        {leaveType.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.leaveTypeId ? <p className="text-sm text-destructive">{errors.leaveTypeId.message}</p> : null}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setPendingSubmission(null)}>
+                Go back
+              </Button>
+              <Button type="button" disabled={isSubmitting} onClick={handleConfirmSkipAndSubmit}>
+                {isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : null}
+                Confirm &amp; submit
+              </Button>
+            </DialogFooter>
           </div>
+        ) : (
+          <form
+            className="space-y-4"
+            noValidate
+            onSubmit={(event) => {
+              void onValid(event);
+            }}
+          >
+            {submitError ? (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {submitError}
+              </div>
+            ) : null}
 
-          <div className="grid grid-cols-2 gap-4">
+            {allowEmployeeSelection ? (
+              <div className="space-y-2">
+                <Label>Employee (optional — leave blank to apply for yourself)</Label>
+                <LeaveEmployeePickerField
+                  selected={selectedEmployee}
+                  onSelect={setSelectedEmployee}
+                />
+                {willSkipLevel1 ? (
+                  <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      Level 1 approval will be skipped for this employee
+                      {skipReasonLabel ? ` (${skipReasonLabel})` : ""}.
+                    </span>
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="space-y-2">
-              <Label htmlFor="apply-start-date">Start date</Label>
-              <Input
-                id="apply-start-date"
-                type="date"
-                aria-invalid={Boolean(errors.startDate)}
-                {...register("startDate")}
+              <Label htmlFor="apply-leave-type">Leave type</Label>
+              <Controller
+                control={control}
+                name="leaveTypeId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="apply-leave-type" aria-invalid={Boolean(errors.leaveTypeId)}>
+                      <SelectValue placeholder="Select a leave type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leaveTypes.map((leaveType) => (
+                        <SelectItem key={leaveType.id} value={leaveType.id}>
+                          {leaveType.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               />
-              {errors.startDate ? <p className="text-sm text-destructive">{errors.startDate.message}</p> : null}
+              {errors.leaveTypeId ? (
+                <p className="text-sm text-destructive">{errors.leaveTypeId.message}</p>
+              ) : null}
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="apply-start-date">Start date</Label>
+                <Input
+                  id="apply-start-date"
+                  type="date"
+                  aria-invalid={Boolean(errors.startDate)}
+                  {...register("startDate")}
+                />
+                {errors.startDate ? (
+                  <p className="text-sm text-destructive">{errors.startDate.message}</p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="apply-end-date">End date</Label>
+                <Input
+                  id="apply-end-date"
+                  type="date"
+                  aria-invalid={Boolean(errors.endDate)}
+                  {...register("endDate")}
+                />
+                {errors.endDate ? (
+                  <p className="text-sm text-destructive">{errors.endDate.message}</p>
+                ) : null}
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="apply-end-date">End date</Label>
-              <Input
-                id="apply-end-date"
-                type="date"
-                aria-invalid={Boolean(errors.endDate)}
-                {...register("endDate")}
-              />
-              {errors.endDate ? <p className="text-sm text-destructive">{errors.endDate.message}</p> : null}
+              <Label htmlFor="apply-reason">Reason (optional)</Label>
+              <Textarea id="apply-reason" {...register("reason")} />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="apply-reason">Reason (optional)</Label>
-            <Textarea id="apply-reason" {...register("reason")} />
-          </div>
-
-          <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              Apply for leave
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : null}
+                Apply for leave
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

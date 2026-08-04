@@ -1,8 +1,22 @@
 import { useState } from "react";
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { Button } from "@/components/ui/button";
-import { CHART_AXIS_TICK, CHART_GRID_STROKE, CHART_TOOLTIP_STYLE } from "@/modules/dashboard/components/chartTheme";
+import {
+  CHART_AXIS_TICK,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+} from "@/modules/dashboard/components/chartTheme";
 import type { LeaveMonthlyStat } from "@/modules/dashboard/types/dashboard.types";
 
 type TrendView = "area" | "line";
@@ -30,7 +44,10 @@ function formatMonthLabel(month: string): string {
  */
 export function LeaveTrendChart({ data, height = 220 }: LeaveTrendChartProps) {
   const [view, setView] = useState<TrendView>("area");
-  const chartData = data.map((point) => ({ month: formatMonthLabel(point.month), count: point.count }));
+  const chartData = data.map((point) => ({
+    month: formatMonthLabel(point.month),
+    count: point.count,
+  }));
 
   return (
     <div>
@@ -65,7 +82,13 @@ export function LeaveTrendChart({ data, height = 220 }: LeaveTrendChartProps) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} vertical={false} />
             <XAxis dataKey="month" tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} width={32} />
+            <YAxis
+              allowDecimals={false}
+              tick={CHART_AXIS_TICK}
+              axisLine={false}
+              tickLine={false}
+              width={32}
+            />
             <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
             <Area
               type="monotone"
@@ -80,7 +103,13 @@ export function LeaveTrendChart({ data, height = 220 }: LeaveTrendChartProps) {
           <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} vertical={false} />
             <XAxis dataKey="month" tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} width={32} />
+            <YAxis
+              allowDecimals={false}
+              tick={CHART_AXIS_TICK}
+              axisLine={false}
+              tickLine={false}
+              width={32}
+            />
             <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
             <Line
               type="monotone"

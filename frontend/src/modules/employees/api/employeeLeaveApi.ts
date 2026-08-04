@@ -68,7 +68,10 @@ function toEmployeeLeaveRequest(wire: EmployeeLeaveRequestWireResponse): Employe
 }
 
 /** `GET /api/v1/leave/balance/{employee_id}/?year=` — requires leave.view_leave. */
-export async function getEmployeeLeaveBalance(employeeId: string, year?: number): Promise<EmployeeLeaveBalance[]> {
+export async function getEmployeeLeaveBalance(
+  employeeId: string,
+  year?: number,
+): Promise<EmployeeLeaveBalance[]> {
   const response = await httpClient.get<ApiSuccessResponse<EmployeeLeaveBalanceWireResponse[]>>(
     `${API_ENDPOINTS.leave}/balance/${employeeId}/`,
     { params: { year } },

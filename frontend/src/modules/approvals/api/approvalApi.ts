@@ -1,7 +1,11 @@
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { httpClient } from "@/lib/api/httpClient";
 import type { ApiSuccessResponse } from "@/lib/api/types";
-import type { ApprovalRequest, ApprovalStep, DecideApprovalInput } from "@/modules/approvals/types/approval.types";
+import type {
+  ApprovalRequest,
+  ApprovalStep,
+  DecideApprovalInput,
+} from "@/modules/approvals/types/approval.types";
 
 /** The exact wire shape APPROVALS_API.md documents for `ApprovalRequestResponseSerializer`. */
 interface ApprovalStepWireResponse {

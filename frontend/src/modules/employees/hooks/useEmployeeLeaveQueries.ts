@@ -1,7 +1,10 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import type { ApiError, PagedResult } from "@/lib/api/types";
-import { getEmployeeLeaveBalance, listEmployeeLeaveHistory } from "@/modules/employees/api/employeeLeaveApi";
+import {
+  getEmployeeLeaveBalance,
+  listEmployeeLeaveHistory,
+} from "@/modules/employees/api/employeeLeaveApi";
 import type {
   EmployeeLeaveBalance,
   EmployeeLeaveHistoryFilters,

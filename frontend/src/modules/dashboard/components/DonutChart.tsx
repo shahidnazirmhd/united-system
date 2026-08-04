@@ -36,7 +36,10 @@ export function DonutChart({ data, height = 200 }: DonutChartProps) {
               <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [value, "Count"]} />
+          <Tooltip
+            contentStyle={CHART_TOOLTIP_STYLE}
+            formatter={(value: number) => [value, "Count"]}
+          />
         </PieChart>
       </ResponsiveContainer>
       <ul className="flex-1 space-y-1.5">

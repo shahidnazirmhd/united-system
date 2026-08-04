@@ -8,7 +8,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { ManagedUser } from "@/modules/users/types/user.types";
 
 interface UserTableProps {
@@ -90,7 +97,9 @@ export function UserTable({
                       Send password reset
                     </DropdownMenuItem>
                     {user.isActive ? (
-                      <DropdownMenuItem onClick={() => onDeactivate(user)}>Deactivate</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onDeactivate(user)}>
+                        Deactivate
+                      </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onClick={() => onActivate(user)}>Activate</DropdownMenuItem>
                     )}

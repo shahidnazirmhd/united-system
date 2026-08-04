@@ -32,7 +32,11 @@ interface LinkUserToEmployeeDialogProps {
  * `useAllEmployeesQuery` docstring for the same "no new heavy dependency for
  * this phase's scope" reasoning.
  */
-export function LinkUserToEmployeeDialog({ open, onOpenChange, user }: LinkUserToEmployeeDialogProps) {
+export function LinkUserToEmployeeDialog({
+  open,
+  onOpenChange,
+  user,
+}: LinkUserToEmployeeDialogProps) {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
@@ -112,14 +116,18 @@ export function LinkUserToEmployeeDialog({ open, onOpenChange, user }: LinkUserT
                 </button>
               ))
             ) : (
-              <div className="p-4 text-center text-sm text-muted-foreground">No employees found.</div>
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                No employees found.
+              </div>
             )}
           </div>
         </div>
 
         <DialogFooter>
           <Button onClick={handleLink} disabled={!selectedEmployeeId || mutation.isPending}>
-            {mutation.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            {mutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
             Link employee
           </Button>
         </DialogFooter>

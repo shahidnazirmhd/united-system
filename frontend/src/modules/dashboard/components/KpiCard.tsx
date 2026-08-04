@@ -23,7 +23,14 @@ interface KpiCardProps {
  * future widget is a one-line `<KpiCard .../>` addition to a grid, not a
  * new component.
  */
-export function KpiCard({ label, value, icon: Icon, helpText, isLoading = false, className }: KpiCardProps) {
+export function KpiCard({
+  label,
+  value,
+  icon: Icon,
+  helpText,
+  isLoading = false,
+  className,
+}: KpiCardProps) {
   return (
     <Card className={cn(className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -36,7 +43,9 @@ export function KpiCard({ label, value, icon: Icon, helpText, isLoading = false,
         ) : (
           <div className="text-2xl font-semibold text-foreground">{value}</div>
         )}
-        {helpText && !isLoading ? <p className="mt-1 text-xs text-muted-foreground">{helpText}</p> : null}
+        {helpText && !isLoading ? (
+          <p className="mt-1 text-xs text-muted-foreground">{helpText}</p>
+        ) : null}
       </CardContent>
     </Card>
   );

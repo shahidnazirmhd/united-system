@@ -3,6 +3,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { createQueryKeyFactory } from "@/lib/api";
 import type { ApiError, PagedResult } from "@/lib/api/types";
 import {
+  checkLevel1ApprovalSkip,
   getEmployeeLeaveBalance,
   getLeaveRequestById,
   getMyLeaveBalance,
@@ -13,6 +14,7 @@ import {
 } from "@/modules/leave/api/leaveApi";
 import { searchActiveEmployees } from "@/modules/leave/api/leaveEmployeePicker";
 import type {
+  Level1ApprovalCheck,
   LeaveBalance,
   LeaveEmployeeOption,
   LeaveHistoryFilters,
@@ -71,7 +73,9 @@ export function useEmployeeLeaveHistoryQuery(
   });
 }
 
-export function useLeaveRequestDetailQuery(leaveRequestId: string | undefined): UseQueryResult<LeaveRequest, ApiError> {
+export function useLeaveRequestDetailQuery(
+  leaveRequestId: string | undefined,
+): UseQueryResult<LeaveRequest, ApiError> {
   return useQuery({
     queryKey: leaveKeys.detail(leaveRequestId ?? ""),
     queryFn: () => getLeaveRequestById(leaveRequestId as string),
@@ -81,11 +85,27 @@ export function useLeaveRequestDetailQuery(leaveRequestId: string | undefined): 
 
 /** Feeds "Apply Leave for Employee" / "Adjust Balance"'s search-as-you-type
  * employee picker — see api/leaveEmployeePicker.ts's docstring. */
-export function useActiveEmployeeSearchQuery(search: string): UseQueryResult<LeaveEmployeeOption[], ApiError> {
+export function useActiveEmployeeSearchQuery(
+  search: string,
+): UseQueryResult<LeaveEmployeeOption[], ApiError> {
   return useQuery({
     queryKey: [...leaveKeys.all, "employee-search", search] as const,
     queryFn: () => searchActiveEmployees(search),
     staleTime: 30_000,
+  });
+}
+
+/** HR Leave Workflow round, item 1 — backs the HR-on-behalf Apply Leave
+ * dialog's pre-submit confirmation step. Only meaningful for that flow, so
+ * callers pass `undefined` (disabling the query) for self-service apply. */
+export function useLevel1ApprovalCheckQuery(
+  employeeId: string | undefined,
+): UseQueryResult<Level1ApprovalCheck, ApiError> {
+  return useQuery({
+    queryKey: [...leaveKeys.all, "level1-approval-check", employeeId ?? ""] as const,
+    queryFn: () => checkLevel1ApprovalSkip(employeeId as string),
+    enabled: Boolean(employeeId),
+    staleTime: 10_000,
   });
 }
 

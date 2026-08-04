@@ -86,7 +86,10 @@ export function DecideApprovalDialog({
             {isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
             Reject
           </Button>
-          <Button disabled={isSubmitting} onClick={() => onDecide("approve", comments.trim() || null)}>
+          <Button
+            disabled={isSubmitting}
+            onClick={() => onDecide("approve", comments.trim() || null)}
+          >
             {isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
             Approve
           </Button>

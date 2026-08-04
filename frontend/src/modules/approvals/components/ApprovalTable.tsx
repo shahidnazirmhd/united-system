@@ -1,5 +1,12 @@
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ApprovalStatusBadge } from "@/modules/approvals/components/ApprovalStatusBadge";
 import type { ApprovalRequest } from "@/modules/approvals/types/approval.types";
 
@@ -22,7 +29,9 @@ export function ApprovalTable({ approvalRequests, onDecide }: ApprovalTableProps
       <TableBody>
         {approvalRequests.map((approvalRequest) => (
           <TableRow key={approvalRequest.id}>
-            <TableCell className="max-w-md whitespace-normal">{approvalRequest.subjectSummary}</TableCell>
+            <TableCell className="max-w-md whitespace-normal">
+              {approvalRequest.subjectSummary}
+            </TableCell>
             <TableCell>{approvalRequest.currentLevel}</TableCell>
             <TableCell>
               <ApprovalStatusBadge status={approvalRequest.status} />

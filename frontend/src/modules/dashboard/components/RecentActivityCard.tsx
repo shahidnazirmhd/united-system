@@ -31,7 +31,11 @@ const LABEL_BY_STATUS: Record<string, string> = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={VARIANT_BY_STATUS[status] ?? "outline"}>{LABEL_BY_STATUS[status] ?? status}</Badge>;
+  return (
+    <Badge variant={VARIANT_BY_STATUS[status] ?? "outline"}>
+      {LABEL_BY_STATUS[status] ?? status}
+    </Badge>
+  );
 }
 
 /**
@@ -64,16 +68,22 @@ export function RecentActivityCard() {
     >
       <ul className="divide-y divide-border">
         {(data ?? []).map((item) => (
-          <li key={item.leaveRequestId} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+          <li
+            key={item.leaveRequestId}
+            className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+          >
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">
                 {item.employeeName ?? "Unknown employee"}
                 {item.employeeCode ? (
-                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">{item.employeeCode}</span>
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                    {item.employeeCode}
+                  </span>
                 ) : null}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {item.leaveTypeName ?? "Leave"} · {formatRelativeToNow(item.updatedAt ?? item.startDate)}
+                {item.leaveTypeName ?? "Leave"} ·{" "}
+                {formatRelativeToNow(item.updatedAt ?? item.startDate)}
               </p>
             </div>
             <StatusBadge status={item.status} />

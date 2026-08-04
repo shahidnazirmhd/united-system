@@ -6,6 +6,7 @@ import type {
   ApplyLeaveInput,
   CancelLeaveInput,
   CreateLeaveTypeInput,
+  Level1ApprovalCheck,
   LeaveBalance,
   LeaveBalanceAdjustment,
   LeaveHistoryFilters,
@@ -25,6 +26,7 @@ interface LeaveTypeWireResponse {
   is_paid: boolean;
   requires_approval: boolean;
   is_active: boolean;
+  maps_to_employee_status: "sick_leave" | "annual_leave" | null;
 }
 
 interface LeaveBalanceWireResponse {
@@ -60,6 +62,18 @@ interface LeaveRequestWireResponse {
   // requirement) — null on every other read.
   employee_name: string | null;
   employee_code: string | null;
+  // --- HR Leave Workflow round (skip-level-1 + initiator tracking) -------
+  level1_skipped: boolean;
+  level1_skip_reason: string | null;
+  initiated_via: "hr" | "telegram" | null;
+  initiator_user_id: string | null;
+  initiator_telegram_user_id: number | null;
+  initiator_display_name: string | null;
+}
+
+interface Level1ApprovalCheckWireResponse {
+  will_skip_level1: boolean;
+  skip_reason: string | null;
 }
 
 interface LeaveBalanceAdjustmentWireResponse {
@@ -88,6 +102,7 @@ function toLeaveType(wire: LeaveTypeWireResponse): LeaveType {
     isPaid: wire.is_paid,
     requiresApproval: wire.requires_approval,
     isActive: wire.is_active,
+    mapsToEmployeeStatus: wire.maps_to_employee_status,
   };
 }
 
@@ -125,10 +140,22 @@ function toLeaveRequest(wire: LeaveRequestWireResponse): LeaveRequest {
     cancellationReason: wire.cancellation_reason,
     employeeName: wire.employee_name,
     employeeCode: wire.employee_code,
+    level1Skipped: wire.level1_skipped,
+    level1SkipReason: wire.level1_skip_reason,
+    initiatedVia: wire.initiated_via,
+    initiatorUserId: wire.initiator_user_id,
+    initiatorTelegramUserId: wire.initiator_telegram_user_id,
+    initiatorDisplayName: wire.initiator_display_name,
   };
 }
 
-function toLeaveBalanceAdjustment(wire: LeaveBalanceAdjustmentWireResponse): LeaveBalanceAdjustment {
+function toLevel1ApprovalCheck(wire: Level1ApprovalCheckWireResponse): Level1ApprovalCheck {
+  return { willSkipLevel1: wire.will_skip_level1, skipReason: wire.skip_reason };
+}
+
+function toLeaveBalanceAdjustment(
+  wire: LeaveBalanceAdjustmentWireResponse,
+): LeaveBalanceAdjustment {
   return {
     id: wire.id,
     employeeId: wire.employee_id,
@@ -185,13 +212,17 @@ export async function createLeaveType(input: CreateLeaveTypeInput): Promise<Leav
       default_annual_days: input.defaultAnnualDays,
       is_paid: input.isPaid,
       requires_approval: input.requiresApproval,
+      maps_to_employee_status: input.mapsToEmployeeStatus,
     },
   );
   return toLeaveType(response.data.data);
 }
 
 /** `PATCH /api/v1/leave/types/manage/{id}/` */
-export async function updateLeaveType(leaveTypeId: string, input: UpdateLeaveTypeInput): Promise<LeaveType> {
+export async function updateLeaveType(
+  leaveTypeId: string,
+  input: UpdateLeaveTypeInput,
+): Promise<LeaveType> {
   const response = await httpClient.patch<ApiSuccessResponse<LeaveTypeWireResponse>>(
     `${API_ENDPOINTS.leave}/types/manage/${leaveTypeId}/`,
     {
@@ -201,6 +232,7 @@ export async function updateLeaveType(leaveTypeId: string, input: UpdateLeaveTyp
       is_paid: input.isPaid,
       requires_approval: input.requiresApproval,
       is_active: input.isActive,
+      maps_to_employee_status: input.mapsToEmployeeStatus,
     },
   );
   return toLeaveType(response.data.data);
@@ -218,7 +250,10 @@ export async function getMyLeaveBalance(year?: number): Promise<LeaveBalance[]> 
 }
 
 /** `GET /api/v1/leave/balance/{employee_id}/?year=` — requires leave.view_leave. */
-export async function getEmployeeLeaveBalance(employeeId: string, year?: number): Promise<LeaveBalance[]> {
+export async function getEmployeeLeaveBalance(
+  employeeId: string,
+  year?: number,
+): Promise<LeaveBalance[]> {
   const response = await httpClient.get<ApiSuccessResponse<LeaveBalanceWireResponse[]>>(
     `${API_ENDPOINTS.leave}/balance/${employeeId}/`,
     { params: { year } },
@@ -228,7 +263,9 @@ export async function getEmployeeLeaveBalance(employeeId: string, year?: number)
 
 /** `POST /api/v1/leave/balances/adjust/` — requires leave.manage_leave. One
  * upsert path backs both Leave Balance Opening and Adjustment. */
-export async function adjustLeaveBalance(input: AdjustLeaveBalanceInput): Promise<LeaveBalanceAdjustment> {
+export async function adjustLeaveBalance(
+  input: AdjustLeaveBalanceInput,
+): Promise<LeaveBalanceAdjustment> {
   const response = await httpClient.post<ApiSuccessResponse<LeaveBalanceAdjustmentWireResponse>>(
     `${API_ENDPOINTS.leave}/balances/adjust/`,
     {
@@ -247,7 +284,9 @@ export async function adjustLeaveBalance(input: AdjustLeaveBalanceInput): Promis
 // --- Leave Requests ------------------------------------------------------
 
 /** `GET /api/v1/leave/requests/` — the caller's own history. */
-export async function listMyLeaveHistory(filters: LeaveHistoryFilters = {}): Promise<PagedResult<LeaveRequest>> {
+export async function listMyLeaveHistory(
+  filters: LeaveHistoryFilters = {},
+): Promise<PagedResult<LeaveRequest>> {
   const response = await httpClient.get<ApiSuccessResponse<LeaveRequestWireResponse[]>>(
     `${API_ENDPOINTS.leave}/requests/`,
     { params: { status: filters.status, page: filters.page, page_size: filters.pageSize } },
@@ -279,23 +318,51 @@ export async function getLeaveRequestById(leaveRequestId: string): Promise<Leave
 export async function applyLeave(input: ApplyLeaveInput): Promise<LeaveRequest> {
   const response = await httpClient.post<ApiSuccessResponse<LeaveRequestWireResponse>>(
     `${API_ENDPOINTS.leave}/requests/`,
-    { leave_type_id: input.leaveTypeId, start_date: input.startDate, end_date: input.endDate, reason: input.reason ?? null },
+    {
+      leave_type_id: input.leaveTypeId,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      reason: input.reason ?? null,
+    },
   );
   return toLeaveRequest(response.data.data);
 }
 
+/** `GET /api/v1/leave/requests/employee/{employee_id}/level1-approval-check/`
+ * — HR Leave Workflow round, item 1. Read-only preview the HR-on-behalf
+ * Apply Leave dialog calls before submit, so it can warn the user Level 1
+ * approval will be skipped (and why) ahead of time. Requires
+ * leave.manage_leave. */
+export async function checkLevel1ApprovalSkip(employeeId: string): Promise<Level1ApprovalCheck> {
+  const response = await httpClient.get<ApiSuccessResponse<Level1ApprovalCheckWireResponse>>(
+    `${API_ENDPOINTS.leave}/requests/employee/${employeeId}/level1-approval-check/`,
+  );
+  return toLevel1ApprovalCheck(response.data.data);
+}
+
 /** `POST /api/v1/leave/requests/employee/{employee_id}/apply/` — HR/Admin
  * applies on a named employee's behalf. Requires leave.manage_leave. */
-export async function applyLeaveForEmployee(employeeId: string, input: ApplyLeaveInput): Promise<LeaveRequest> {
+export async function applyLeaveForEmployee(
+  employeeId: string,
+  input: ApplyLeaveInput,
+): Promise<LeaveRequest> {
   const response = await httpClient.post<ApiSuccessResponse<LeaveRequestWireResponse>>(
     `${API_ENDPOINTS.leave}/requests/employee/${employeeId}/apply/`,
-    { leave_type_id: input.leaveTypeId, start_date: input.startDate, end_date: input.endDate, reason: input.reason ?? null },
+    {
+      leave_type_id: input.leaveTypeId,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      reason: input.reason ?? null,
+    },
   );
   return toLeaveRequest(response.data.data);
 }
 
 /** `POST /api/v1/leave/requests/{id}/cancel/` — the caller's own request. */
-export async function cancelLeaveRequest(leaveRequestId: string, input: CancelLeaveInput = {}): Promise<LeaveRequest> {
+export async function cancelLeaveRequest(
+  leaveRequestId: string,
+  input: CancelLeaveInput = {},
+): Promise<LeaveRequest> {
   const response = await httpClient.post<ApiSuccessResponse<LeaveRequestWireResponse>>(
     `${API_ENDPOINTS.leave}/requests/${leaveRequestId}/cancel/`,
     { cancellation_reason: input.cancellationReason ?? null },

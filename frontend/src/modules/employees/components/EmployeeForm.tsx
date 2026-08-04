@@ -6,9 +6,18 @@ import { Controller, useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ManagerPickerField, type ManagerOption } from "@/modules/employees/components/ManagerPickerField";
+import {
+  ManagerPickerField,
+  type ManagerOption,
+} from "@/modules/employees/components/ManagerPickerField";
 import { useAllDepartmentsQuery } from "@/modules/employees/hooks/useDepartmentQueries";
 import { EMPLOYMENT_TYPE_OPTIONS } from "@/modules/employees/types/employee.types";
 import {
@@ -61,7 +70,11 @@ export function EmployeeForm({
 
   const [selectedManager, setSelectedManager] = useState<ManagerOption | null>(() =>
     defaultValues?.managerId
-      ? { id: defaultValues.managerId, fullName: initialManagerName ?? "Current manager", employeeCode: null }
+      ? {
+          id: defaultValues.managerId,
+          fullName: initialManagerName ?? "Current manager",
+          employeeCode: null,
+        }
       : null,
   );
   // Round 16 item 4 — an employee assigned as their own manager (e.g. a
@@ -97,7 +110,11 @@ export function EmployeeForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="firstName">First name</Label>
-          <Input id="firstName" aria-invalid={Boolean(errors.firstName)} {...register("firstName")} />
+          <Input
+            id="firstName"
+            aria-invalid={Boolean(errors.firstName)}
+            {...register("firstName")}
+          />
           {errors.firstName ? (
             <p className="text-sm text-destructive">{errors.firstName.message}</p>
           ) : null}
@@ -181,8 +198,8 @@ export function EmployeeForm({
                     <div>
                       <p className="text-sm font-medium text-foreground">Top-level (no manager)</p>
                       <p className="text-xs text-muted-foreground">
-                        e.g. CEO/Managing Director — leave requests are routed to this employee for their
-                        own approval instead of to someone else.
+                        e.g. CEO/Managing Director — leave requests are routed to this employee for
+                        their own approval instead of to someone else.
                       </p>
                     </div>
                     <Switch

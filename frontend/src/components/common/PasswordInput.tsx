@@ -21,7 +21,12 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
 
     return (
       <div className="relative">
-        <Input type={isVisible ? "text" : "password"} className={cn("pr-9", className)} ref={ref} {...props} />
+        <Input
+          type={isVisible ? "text" : "password"}
+          className={cn("pr-9", className)}
+          ref={ref}
+          {...props}
+        />
         <Button
           type="button"
           variant="ghost"

@@ -13,12 +13,7 @@ export type EmploymentType = "full_time" | "part_time" | "contract" | "intern";
  * `EmployeeCurrentStatus` enum docstring for the full reasoning.
  */
 export type EmployeeCurrentStatus =
-  | "not_joined"
-  | "working"
-  | "sick_leave"
-  | "annual_leave"
-  | "terminated"
-  | "resigned";
+  "not_joined" | "working" | "sick_leave" | "annual_leave" | "terminated" | "resigned";
 
 /** Manually settable values only — Sick Leave/Annual Leave are system-managed
  * by the Leave module and deliberately excluded, mirroring the backend's

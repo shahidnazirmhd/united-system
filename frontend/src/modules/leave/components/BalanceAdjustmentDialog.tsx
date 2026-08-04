@@ -14,7 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { LeaveEmployeePickerField } from "@/modules/leave/components/LeaveEmployeePickerField";
 import type { LeaveEmployeeOption, LeaveType } from "@/modules/leave/types/leave.types";
@@ -97,7 +103,9 @@ export function BalanceAdjustmentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === "open" ? "Open a leave balance" : "Adjust a leave balance"}</DialogTitle>
+          <DialogTitle>
+            {mode === "open" ? "Open a leave balance" : "Adjust a leave balance"}
+          </DialogTitle>
           <DialogDescription>
             {mode === "open"
               ? "Creates a fresh entitlement for an employee/leave type/year that has no balance row yet."
@@ -123,14 +131,21 @@ export function BalanceAdjustmentDialog({
 
           <div className="space-y-2">
             <Label>Employee</Label>
-            <input type="hidden" {...register("employeeId")} value={selectedEmployee?.id ?? ""} readOnly />
+            <input
+              type="hidden"
+              {...register("employeeId")}
+              value={selectedEmployee?.id ?? ""}
+              readOnly
+            />
             <LeaveEmployeePickerField
               selected={selectedEmployee}
               onSelect={(employee) => {
                 setSelectedEmployee(employee);
               }}
             />
-            {errors.employeeId ? <p className="text-sm text-destructive">{errors.employeeId.message}</p> : null}
+            {errors.employeeId ? (
+              <p className="text-sm text-destructive">{errors.employeeId.message}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -153,7 +168,9 @@ export function BalanceAdjustmentDialog({
                 </Select>
               )}
             />
-            {errors.leaveTypeId ? <p className="text-sm text-destructive">{errors.leaveTypeId.message}</p> : null}
+            {errors.leaveTypeId ? (
+              <p className="text-sm text-destructive">{errors.leaveTypeId.message}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -165,15 +182,25 @@ export function BalanceAdjustmentDialog({
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="balance-entitled">Entitled days</Label>
-              <Input id="balance-entitled" aria-invalid={Boolean(errors.entitledDays)} {...register("entitledDays")} />
+              <Input
+                id="balance-entitled"
+                aria-invalid={Boolean(errors.entitledDays)}
+                {...register("entitledDays")}
+              />
               {errors.entitledDays ? (
                 <p className="text-sm text-destructive">{errors.entitledDays.message}</p>
               ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="balance-used">Used days</Label>
-              <Input id="balance-used" aria-invalid={Boolean(errors.usedDays)} {...register("usedDays")} />
-              {errors.usedDays ? <p className="text-sm text-destructive">{errors.usedDays.message}</p> : null}
+              <Input
+                id="balance-used"
+                aria-invalid={Boolean(errors.usedDays)}
+                {...register("usedDays")}
+              />
+              {errors.usedDays ? (
+                <p className="text-sm text-destructive">{errors.usedDays.message}</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="balance-carried">Carried forward</Label>
@@ -196,7 +223,9 @@ export function BalanceAdjustmentDialog({
               placeholder="Required for the audit trail…"
               {...register("reason")}
             />
-            {errors.reason ? <p className="text-sm text-destructive">{errors.reason.message}</p> : null}
+            {errors.reason ? (
+              <p className="text-sm text-destructive">{errors.reason.message}</p>
+            ) : null}
           </div>
 
           <DialogFooter>

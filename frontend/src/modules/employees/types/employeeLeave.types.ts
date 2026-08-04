@@ -10,7 +10,8 @@
  * employee-picker already established, just running in the other
  * direction this time).
  */
-export type EmployeeLeaveRequestStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
+export type EmployeeLeaveRequestStatus =
+  "draft" | "pending" | "approved" | "rejected" | "cancelled";
 
 export interface EmployeeLeaveBalance {
   leaveTypeId: string;

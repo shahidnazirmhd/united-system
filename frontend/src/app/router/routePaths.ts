@@ -36,5 +36,7 @@ export const ROUTE_PATHS = {
  * string map since every other route so far had no params.
  */
 export const buildEmployeeDetailPath = (employeeId: string): string => `/employees/${employeeId}`;
-export const buildEmployeeEditPath = (employeeId: string): string => `/employees/${employeeId}/edit`;
-export const buildLeaveRequestDetailPath = (leaveRequestId: string): string => `/leave/${leaveRequestId}`;
+export const buildEmployeeEditPath = (employeeId: string): string =>
+  `/employees/${employeeId}/edit`;
+export const buildLeaveRequestDetailPath = (leaveRequestId: string): string =>
+  `/leave/${leaveRequestId}`;

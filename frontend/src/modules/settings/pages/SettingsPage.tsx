@@ -4,7 +4,13 @@ import { toast } from "sonner";
 
 import { ErrorState, PageHeader, PageLoader } from "@/components/common";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useHasPermission } from "@/lib/auth/usePermission";
 import { useUpdateSettingMutation } from "@/modules/settings/hooks/useSettingsMutations";
 import { useSettingsQuery } from "@/modules/settings/hooks/useSettingsQueries";
@@ -50,7 +56,10 @@ export function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Settings" description="Application-wide settings. More will be added here over time." />
+      <PageHeader
+        title="Settings"
+        description="Application-wide settings. More will be added here over time."
+      />
 
       {isLoading ? (
         <PageLoader label="Loading settings…" />

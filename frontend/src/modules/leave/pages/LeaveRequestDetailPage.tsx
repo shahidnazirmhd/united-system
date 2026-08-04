@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -12,8 +12,15 @@ import { useCurrentUserQuery } from "@/lib/auth";
 import { ApprovalHistoryPanel, SUBJECT_TYPE_LEAVE_REQUEST } from "@/modules/approvals";
 import { CancelLeaveDialog } from "@/modules/leave/components/CancelLeaveDialog";
 import { LeaveStatusBadge } from "@/modules/leave/components/LeaveStatusBadge";
-import { useCancelLeaveForEmployeeMutation, useCancelLeaveMutation } from "@/modules/leave/hooks/useLeaveMutations";
-import { useEmployeeLeaveBalanceQuery, useLeaveRequestDetailQuery } from "@/modules/leave/hooks/useLeaveQueries";
+import {
+  useCancelLeaveForEmployeeMutation,
+  useCancelLeaveMutation,
+} from "@/modules/leave/hooks/useLeaveMutations";
+import {
+  useEmployeeLeaveBalanceQuery,
+  useLeaveRequestDetailQuery,
+} from "@/modules/leave/hooks/useLeaveQueries";
+import { LEVEL1_SKIP_REASON_LABELS } from "@/modules/leave/types/leave.types";
 
 const CANCELLABLE_STATUSES = new Set(["pending", "approved"]);
 
@@ -64,13 +71,21 @@ export function LeaveRequestDetailPage() {
         setCancelling(false);
       },
       onError: (error: unknown) => {
-        setCancelError(error instanceof ApiError ? error.message : "Could not cancel this request.");
+        setCancelError(
+          error instanceof ApiError ? error.message : "Could not cancel this request.",
+        );
       },
     };
     if (!isOwnRequest && canManage) {
-      cancelForEmployeeMutation.mutate({ leaveRequestId: request.id, input: { cancellationReason } }, onSettled);
+      cancelForEmployeeMutation.mutate(
+        { leaveRequestId: request.id, input: { cancellationReason } },
+        onSettled,
+      );
     } else {
-      cancelMutation.mutate({ leaveRequestId: request.id, input: { cancellationReason } }, onSettled);
+      cancelMutation.mutate(
+        { leaveRequestId: request.id, input: { cancellationReason } },
+        onSettled,
+      );
     }
   };
 
@@ -100,6 +115,19 @@ export function LeaveRequestDetailPage() {
             <p className="text-xs text-muted-foreground">Status</p>
             <LeaveStatusBadge status={request.status} />
           </div>
+          {request.employeeName ? (
+            <div>
+              <p className="text-xs text-muted-foreground">Employee</p>
+              <p className="text-sm text-foreground">
+                {request.employeeName}
+                {request.employeeCode ? (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    ({request.employeeCode})
+                  </span>
+                ) : null}
+              </p>
+            </div>
+          ) : null}
           <div>
             <p className="text-xs text-muted-foreground">Dates</p>
             <p className="text-sm text-foreground">
@@ -121,7 +149,9 @@ export function LeaveRequestDetailPage() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Leave balance at time of application</p>
-            <p className="text-sm text-foreground">{request.balanceAtApplication} day(s) available</p>
+            <p className="text-sm text-foreground">
+              {request.balanceAtApplication} day(s) available
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Reason</p>
@@ -135,6 +165,44 @@ export function LeaveRequestDetailPage() {
             <div className="sm:col-span-2">
               <p className="text-xs text-muted-foreground">Cancellation reason</p>
               <p className="text-sm text-foreground">{request.cancellationReason ?? "—"}</p>
+            </div>
+          ) : null}
+          {request.initiatedVia ? (
+            <div>
+              <p className="text-xs text-muted-foreground">Request initiator</p>
+              <p className="text-sm text-foreground">
+                {request.initiatedVia === "hr" ? (
+                  <>
+                    {request.initiatorDisplayName ?? "HR/Admin"}
+                    <span className="ml-1 text-xs text-muted-foreground">· System Request</span>
+                  </>
+                ) : (
+                  <>
+                    Telegram user {request.initiatorTelegramUserId}
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      · Employee Portal Request
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+          ) : null}
+          {request.level1Skipped ? (
+            <div className="sm:col-span-2">
+              <p className="text-xs text-muted-foreground">Level 1 approval</p>
+              <p className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                Skipped
+                {request.level1SkipReason ? (
+                  <span className="text-xs text-muted-foreground">
+                    (
+                    {LEVEL1_SKIP_REASON_LABELS[request.level1SkipReason] ??
+                      request.level1SkipReason}
+                    )
+                  </span>
+                ) : null}
+                — sent directly to Level 2 (HR/Admin) approval.
+              </p>
             </div>
           ) : null}
         </CardContent>
@@ -161,10 +229,13 @@ export function LeaveRequestDetailPage() {
                 <CardContent className="space-y-1">
                   <p className="text-xl font-semibold text-foreground">
                     {balance.availableDays}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">days available</span>
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      days available
+                    </span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Entitled {balance.entitledDays} · Used {balance.usedDays} · Pending {balance.pendingDays}
+                    Entitled {balance.entitledDays} · Used {balance.usedDays} · Pending{" "}
+                    {balance.pendingDays}
                   </p>
                 </CardContent>
               </Card>

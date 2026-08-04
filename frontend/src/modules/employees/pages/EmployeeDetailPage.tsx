@@ -37,10 +37,12 @@ export function EmployeeDetailPage() {
   const deactivateMutation = useDeactivateEmployeeMutation();
   const canViewLeave = Boolean(
     currentUser?.permissionCodes.includes("leave.view_leave") ||
-      currentUser?.permissionCodes.includes("leave.manage_leave"),
+    currentUser?.permissionCodes.includes("leave.manage_leave"),
   );
   // RBAC review round: Edit/Activate/Deactivate require employees.manage_employees.
-  const canManageEmployees = Boolean(currentUser?.permissionCodes.includes("employees.manage_employees"));
+  const canManageEmployees = Boolean(
+    currentUser?.permissionCodes.includes("employees.manage_employees"),
+  );
 
   if (isLoading) {
     return <PageLoader label="Loading employee…" />;
@@ -87,7 +89,11 @@ export function EmployeeDetailPage() {
                   Deactivate
                 </Button>
               ) : (
-                <Button variant="outline" onClick={handleActivate} disabled={activateMutation.isPending}>
+                <Button
+                  variant="outline"
+                  onClick={handleActivate}
+                  disabled={activateMutation.isPending}
+                >
                   Activate
                 </Button>
               )}
@@ -137,7 +143,7 @@ export function EmployeeDetailPage() {
                 // showing their own name back at them unexplained.
                 employee.managerId === employee.id
                   ? "Self (top-level — approves own leave)"
-                  : employee.managerName ?? ""
+                  : (employee.managerName ?? "")
               }
             />
             <Field label="Employment type" value={employee.employmentType.replace("_", " ")} />
@@ -147,7 +153,11 @@ export function EmployeeDetailPage() {
             <Field label="Last working date" value={employee.lastWorkingDate ?? ""} />
             <Field
               label="Telegram"
-              value={employee.isLinkedToTelegram ? `Linked (${employee.telegramUsername ?? ""})` : "Not linked"}
+              value={
+                employee.isLinkedToTelegram
+                  ? `Linked (${employee.telegramUsername ?? ""})`
+                  : "Not linked"
+              }
             />
           </dl>
         </CardContent>
