@@ -2074,7 +2074,7 @@
                   "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
                   "var json = pm.response.json();",
                   "pm.test(\"employee_code was generated\", function () {",
-                  "    pm.expect(json.data.employee_code).to.match(/^EMP-\\d{6}$/);",
+                  "    pm.expect(json.data.employee_code).to.match(/^E\\d{6}$/);",
                   "});",
                   "pm.test(\"status is active\", function () { pm.expect(json.data.status).to.eql(\"active\"); });",
                   "pm.collectionVariables.set(\"employee_id\", json.data.id);"

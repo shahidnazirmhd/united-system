@@ -168,8 +168,15 @@ united-hrms/
 │   ├── docker-compose.prod.yml
 │   └── k8s/                           # manifests/helm chart, added when scale requires it (§8)
 │
-├── docs/
-│   └── architecture/                  # this document and future ADRs
+├── docs/                               # this document, per-module API references,
+│   │                                   # the Postman collection, and TESTING_GUIDE.md —
+│   │                                   # everything non-code lives here as siblings, flat,
+│   │                                   # not nested by category (superseded the originally
+│   │                                   # planned docs/architecture/ subfolder shown in an
+│   │                                   # earlier revision of this diagram; a flat layout
+│   │                                   # was chosen instead once enough of these existed to
+│   │                                   # make the choice concrete)
+│   └── HRMS_Architecture.md           # this document
 │
 └── .github/workflows/                 # CI: lint, type-check, test, build images
 ```

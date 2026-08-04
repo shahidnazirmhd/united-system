@@ -164,7 +164,7 @@ Requires `leave.view_leave`. Every leave request across **every** employee, pagi
 Response rows are the same shape as `GET .../requests/<id>/` (below), plus two enrichment fields resolved per-row from Employees:
 ```json
 { "success": true, "data": [
-  { "id": "018f...", "employee_id": "018f...", "employee_name": "Grace Hopper", "employee_code": "EMP-000002",
+  { "id": "018f...", "employee_id": "018f...", "employee_name": "Grace Hopper", "employee_code": "E000002",
     "leave_type_id": "018f...", "leave_type_name": "Annual Leave",
     "start_date": "2026-09-01", "end_date": "2026-09-03", "total_days": "3.00", "reason": "Family trip",
     "status": "pending", "approved_by": null, "decided_at": null, "decision_comments": null,

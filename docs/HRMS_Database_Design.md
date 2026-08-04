@@ -236,7 +236,7 @@ Conventions used throughout: primary keys are `UUID DEFAULT uuid_generate_v7()` 
 | Column | Type | Nullable | Default | Key / Constraint |
 |---|---|---|---|---|
 | id | UUID | NO | `uuid_generate_v7()` | PK |
-| employee_code | VARCHAR(20) | NO | — | UNIQUE, generated from `employees.employee_code_seq` (e.g. `EMP-000042`) |
+| employee_code | VARCHAR(20) | NO | — | UNIQUE, generated from `employees.employee_code_seq` (e.g. `E000042`) |
 | user_id | UUID | YES | NULL | UNIQUE (logical ref → `identity.users.id`, no FK — cross-schema) |
 | first_name | VARCHAR(100) | NO | — | |
 | last_name | VARCHAR(100) | NO | — | |

@@ -92,7 +92,7 @@ A `not_the_assigned_approver` (not `approval_channel_not_allowed`) is what a dua
 ```json
 { "id": "018f...", "level": 1, "approver_employee_id": "018f...", "approver_permission_code": "approvals.level1_approve",
   "restricted_to_channel": null, "permission_required_for_channel": "web", "decided_by_employee_id": null,
-  "approver_employee_name": "Jane Doe", "approver_employee_code": "EMP-0042",
+  "approver_employee_name": "Jane Doe", "approver_employee_code": "E0042",
   "status": "pending", "comments": null, "decided_at": null }
 ```
 
@@ -101,7 +101,7 @@ Once decided by a different `approvals.level1_approve` holder (not Jane):
 ```json
 { "id": "018f...", "level": 1, "approver_employee_id": "018f...", "approver_permission_code": "approvals.level1_approve",
   "restricted_to_channel": null, "permission_required_for_channel": "web", "decided_by_employee_id": "018f...",
-  "approver_employee_name": "Beth BackupApprover", "approver_employee_code": "EMP-BACKUPL1-001",
+  "approver_employee_name": "Beth BackupApprover", "approver_employee_code": "EBACKUPL1-001",
   "status": "approved", "comments": "Covering for the manager", "decided_at": "2026-08-15T09:00:00Z" }
 ```
 
@@ -150,7 +150,7 @@ Every approval request currently awaiting a decision from the caller, across eve
       { "id": "018f...", "approval_request_id": "018f...", "level": 1, "approver_employee_id": "018f...",
         "approver_permission_code": "approvals.level1_approve", "restricted_to_channel": null,
         "permission_required_for_channel": "web", "decided_by_employee_id": null,
-        "approver_employee_name": "Jane Doe", "approver_employee_code": "EMP-0042",
+        "approver_employee_name": "Jane Doe", "approver_employee_code": "E0042",
         "status": "pending", "comments": null, "decided_at": null }
     ] }
 ] }
@@ -171,7 +171,7 @@ Same three-way authorization as the detail endpoint above, applied across the wh
     "steps": [ { "id": "018f...", "level": 1, "approver_employee_id": "018f...",
                  "approver_permission_code": "approvals.level1_approve", "restricted_to_channel": null,
                  "permission_required_for_channel": "web", "decided_by_employee_id": "018f...",
-                 "approver_employee_name": "Jane Doe", "approver_employee_code": "EMP-0042", "status": "approved",
+                 "approver_employee_name": "Jane Doe", "approver_employee_code": "E0042", "status": "approved",
                  "comments": "Enjoy your trip", "decided_at": "2026-08-15T09:00:00Z" } ] }
 ] }
 ```

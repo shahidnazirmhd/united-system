@@ -105,7 +105,7 @@ Use exactly this email/password — it matches the Postman collection's default 
    Pick any one (e.g. `ENG`'s id) and set it as `department_id` in Postman.
 5. Every request should return the status code its name implies (the "should fail"/"Not Found"/"Duplicate" ones are deliberately testing error paths — a 4xx there is a **pass**, not a bug).
 
-At the end of this folder, note the `employee_code` printed in the **Create Employee** response (e.g. `EMP-000001`) — you'll link this exact employee to Telegram in Part H. This employee was created with no `user_id`, and that's fine and expected: `user_id` is an optional, admin-driven link to an HR System `User` account for web-app access, completely unrelated to Telegram. Telegram linking (Part H) never touches `user_id` and never creates a `User` — it only ever sets the `telegram_*` fields directly on this `Employee` record.
+At the end of this folder, note the `employee_code` printed in the **Create Employee** response (e.g. `E000001`) — you'll link this exact employee to Telegram in Part H. This employee was created with no `user_id`, and that's fine and expected: `user_id` is an optional, admin-driven link to an HR System `User` account for web-app access, completely unrelated to Telegram. Telegram linking (Part H) never touches `user_id` and never creates a `User` — it only ever sets the `telegram_*` fields directly on this `Employee` record.
 
 ### D3. Confirm self-service `/me` works too
 Optional but worth doing since it's new this phase — in Postman, manually send:
@@ -221,7 +221,7 @@ Open a chat with your bot in the actual Telegram app (search its username) and s
 | You send | Expect |
 |---|---|
 | `/start` | Onboarding message ("link your Telegram account...") since you're not linked yet |
-| `/link EMP-000001` (use the real employee_code from Part D2) | "✅ We've sent a one-time code..." |
+| `/link E000001` (use the real employee_code from Part D2) | "✅ We've sent a one-time code..." |
 | *(nothing yet — go fetch the OTP, see below)* | — |
 | *(the 6-digit code)* | "🎉 You're linked, `<Your Name>`! Use the menu below to get started." plus the main menu (Reply Keyboard) appears |
 | `/profile` (or tap "👤 My Profile") | A formatted profile card — name, employee ID, job title, department, etc. Company/Branch show "_Not available_" — that's correct, not a bug (see `EMPLOYEE_API.md`) |
@@ -250,7 +250,7 @@ The OTP is delivered by **email**, not SMS/push — to `work_email` always, and 
 - **If you configured a real Gmail (or other SMTP) account** (see `.env.example`'s SMTP setup guide): the backend actually sends the email via `SmtpEmailClient` — check the employee's `work_email` inbox for a message titled "Your United HRMS Telegram verification code" instead of the logs.
 
 ### Error-path checks worth doing too
-- `/link EMP-999999` (an employee code that doesn't exist) → "We couldn't find an employee with that ID..."
+- `/link E999999` (an employee code that doesn't exist) → "We couldn't find an employee with that ID..."
 - Type the wrong 6-digit code after a real `/link` → "That code isn't right..." (and the pending link stays open — you can just type the correct code next without re-running `/link`)
 - Type the wrong code **5 times in a row** → the 5th wrong guess still says "That code isn't right...", but even the *correct* code on the 6th attempt now gets "That code has been entered incorrectly too many times... Send /link to request a new code." — and `/link` immediately works again (it isn't blocked by a stale "already in progress" message).
 - Wait 10+ minutes after `/link` before entering the code → "That code has expired. Send /link to request a new one."
@@ -266,7 +266,7 @@ Authorization: Bearer {{access_token}}
 ```
 `is_linked_to_telegram` should now be `true`, `telegram_username` should match your Telegram username, and `telegram_linked_at` should be a recent timestamp. `user_id` should still be `null` — that's correct, not a regression (see D2's note on why the two are unrelated). You can also confirm via Django shell:
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c "from apps.employees.infrastructure.models import EmployeeRecord; e = EmployeeRecord.objects.get(employee_code='EMP-000001'); print(e.telegram_user_id, e.telegram_username, e.telegram_linked_at, e.user_id)"
+docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c "from apps.employees.infrastructure.models import EmployeeRecord; e = EmployeeRecord.objects.get(employee_code='E000001'); print(e.telegram_user_id, e.telegram_username, e.telegram_linked_at, e.user_id)"
 ```
 `user_id` in that last column should print `None`.
 
@@ -274,7 +274,7 @@ docker compose -f infra/docker-compose.yml --env-file .env exec backend python m
 
 ## Part H2 — Real end-to-end Leave testing via Telegram (Phase 8)
 
-Continue in the same chat as Part H — you should still be linked (if you ran the `/unlink` steps at the end of Part H's table, send `/link EMP-000001` and re-verify with the OTP before continuing). Full command reference, the Apply Leave flow diagram, and how the calendar picker works: `TELEGRAM_GATEWAY.md` §3b/§3c.
+Continue in the same chat as Part H — you should still be linked (if you ran the `/unlink` steps at the end of Part H's table, send `/link E000001` and re-verify with the OTP before continuing). Full command reference, the Apply Leave flow diagram, and how the calendar picker works: `TELEGRAM_GATEWAY.md` §3b/§3c.
 
 | You send | Expect |
 |---|---|
@@ -326,9 +326,9 @@ Continue in the same chat as Part H — you should still be linked (if you ran t
 
 ## Part H3 — Real end-to-end Approval testing via Telegram (Phase 9; channel restriction + dual-mode/level permissions added across the two Approval Workflow Changes rounds)
 
-This is the first flow in the whole system where the backend pushes an unsolicited message to Telegram rather than only answering requests the Gateway made — see `TELEGRAM_GATEWAY.md` §3d for the architecture. You'll need **two** Telegram accounts linked to two different employees for this: the applicant (reuse `EMP-000001` from Part H) and a manager. If `EMP-000001` doesn't already have a manager assigned, set one first:
+This is the first flow in the whole system where the backend pushes an unsolicited message to Telegram rather than only answering requests the Gateway made — see `TELEGRAM_GATEWAY.md` §3d for the architecture. You'll need **two** Telegram accounts linked to two different employees for this: the applicant (reuse `E000001` from Part H) and a manager. If `E000001` doesn't already have a manager assigned, set one first:
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c "from apps.employees.infrastructure.models import EmployeeRecord; applicant = EmployeeRecord.objects.get(employee_code='EMP-000001'); manager = EmployeeRecord.objects.exclude(id=applicant.id).first(); applicant.manager_id = manager.id; applicant.save(update_fields=['manager_id']); print('manager set:', manager.employee_code)"
+docker compose -f infra/docker-compose.yml --env-file .env exec backend python manage.py shell -c "from apps.employees.infrastructure.models import EmployeeRecord; applicant = EmployeeRecord.objects.get(employee_code='E000001'); manager = EmployeeRecord.objects.exclude(id=applicant.id).first(); applicant.manager_id = manager.id; applicant.save(update_fields=['manager_id']); print('manager set:', manager.employee_code)"
 ```
 Then link that manager's own Telegram account too, exactly as Part H describes (`/link <manager's employee_code>` from a **second** Telegram account, complete the OTP) — Phase 9's validation refuses to create an approval request at all if the manager isn't linked (see below), so this step isn't optional.
 
@@ -403,7 +403,7 @@ Two reject points to check, since this is now a two-level chain:
 | `curl http://localhost:8080/healthz` fails / connection refused | `telegram_gateway` container isn't up or crashed on start — check `docker compose ... logs telegram_gateway` for a Python traceback, usually a missing/invalid env var (Part E) |
 | `getWebhookInfo` shows a `last_error_message` about connection refused/timeout | ngrok isn't running, or you registered the webhook with an old (expired) ngrok URL — restart ngrok, re-run Part G2 with the new URL |
 | Telegram never responds to `/start` at all | Check `docker compose ... logs telegram_gateway` for `webhook_signature_rejected` (means `TELEGRAM_GATEWAY_WEBHOOK_SECRET_TOKEN` in `.env` doesn't match what you passed to `setWebhook` in G2 — they must be identical) |
-| `/link EMP-000001` replies "Something went wrong on our end" | Check `docker compose ... logs telegram_gateway` for the real error; also check `docker compose ... logs backend` — a common cause is the gateway not being able to reach `http://backend:8000` (confirm both containers are on the same compose network, i.e. both started via the same `docker compose -f infra/docker-compose.yml` invocation) |
+| `/link E000001` replies "Something went wrong on our end" | Check `docker compose ... logs telegram_gateway` for the real error; also check `docker compose ... logs backend` — a common cause is the gateway not being able to reach `http://backend:8000` (confirm both containers are on the same compose network, i.e. both started via the same `docker compose -f infra/docker-compose.yml` invocation) |
 | OTP never appears in backend logs | Confirm `link/request/` actually returned `200` in the gateway logs (`hrms_api_call` event) — if it returned `404 employee_not_found`, double check the employee_code you typed |
 | Postman requests fail with connection refused | `backend` container isn't up — `docker compose ... ps` and `docker compose ... logs backend` |
 | Manager never receives the Approve/Reject push (Part H3), but `/pending_approvals` shows it fine | The Celery task likely isn't running at all — bring up `celery_worker` too (`docker compose ... up -d --build celery_worker`) and confirm it's consuming the `approvals` queue, not just `default` (`infra/docker-compose.yml`'s `celery_worker` command must include `-Q default,approvals`); also check `docker compose ... logs celery_worker` for `httpx` connection errors reaching `TELEGRAM_GATEWAY_BASE_URL` |

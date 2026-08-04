@@ -53,7 +53,7 @@ Every layer here has exactly one job, mirroring the backend's own module discipl
 ## 3. Registration / linking flow
 
 ```
-Employee sends: /link EMP-000123
+Employee sends: /link E000123
         │
         ▼
 Gateway calls  POST /api/v1/employees/telegram/link/request/  (employee_code, telegram_user_id, chat_id)

@@ -81,26 +81,26 @@ card (see `README.md`'s "What's intentionally NOT here yet").
 
 ### B1. Things worth clicking through manually (once logged in)
 
-| Action                                                                                                                               | Expect                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Click "Employees" in the sidebar                                                                                                    | Navigates to the real Employee List page (Phase 12) — not a placeholder. See Part B3                                  |
-| Click "Users" in the sidebar                                                                                                        | Navigates to the real User List page (Phase 12) — not a placeholder. See Part B4                                     |
-| Click "Leave" in the sidebar                                                                                                         | Navigates to the real Leave module (Phase 13, redesigned as an HR/Admin queue in the Leave review round) — not a placeholder. See Part B5 |
-| Click "Approvals" in the sidebar                                                                                                     | Navigates to the real Approvals module (Phase 13) — not a placeholder. See Part B6                                    |
-| Click each remaining sidebar item (Attendance, Overtime, Asset Requests, Notifications, Settings)                                    | Each navigates to its own URL and shows a "Coming soon" placeholder with that section's title                         |
+| Action                                                                                            | Expect                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Click "Employees" in the sidebar                                                                  | Navigates to the real Employee List page (Phase 12) — not a placeholder. See Part B3                                                      |
+| Click "Users" in the sidebar                                                                      | Navigates to the real User List page (Phase 12) — not a placeholder. See Part B4                                                          |
+| Click "Leave" in the sidebar                                                                      | Navigates to the real Leave module (Phase 13, redesigned as an HR/Admin queue in the Leave review round) — not a placeholder. See Part B5 |
+| Click "Approvals" in the sidebar                                                                  | Navigates to the real Approvals module (Phase 13) — not a placeholder. See Part B6                                                        |
+| Click each remaining sidebar item (Attendance, Overtime, Asset Requests, Notifications, Settings) | Each navigates to its own URL and shows a "Coming soon" placeholder with that section's title                                             |
 
 **Business Trips (Leave review round):** removed entirely — no sidebar item, no route, no placeholder page. `ROUTE_PATHS.dashboard.businessTrips` and its `PlaceholderPage` route are both gone from `app/router/`; there is nothing left to click through for it.
 
-**Permission-based nav/route gating (Leave review round):** "Employees," "Leave," and "Users" only appear in the sidebar if the signed-in user holds the corresponding `*.view_*`/`*.manage_*` permission (`useHasAnyPermission`, `lib/auth/usePermission.ts`) — a user with only Leave/Approval permissions (no `identity.view_users`/`identity.manage_users`) no longer sees "Users" at all. Each of those pages also self-gates on direct URL navigation (typing `/users`, `/employees/new`, etc. straight into the address bar still renders a "You don't have access to..." `EmptyState` instead of the real page if the caller lacks the permission) — defense-in-depth on top of the hidden nav item, matching the existing `LeaveDashboardPage` precedent. Within a page the caller *can* open, row-level Edit/Deactivate/Activate actions are hidden too if the caller only holds the `view` half of a permission pair, not `manage`. Test this by logging in as a user whose only role grants `leave.manage_leave`/`approvals`-related permissions: "Users" should be absent from the sidebar, and manually navigating to `/users` should show the restricted `EmptyState`, not the User List.
-| Resize the window below the `lg` breakpoint (~1024px), or open dev tools' device toolbar                                             | The sidebar disappears and a hamburger menu button appears in the topbar                                              |
-| Click the hamburger menu on a narrow viewport                                                                                        | A slide-over navigation panel opens from the left with the same links; clicking a link navigates and closes the panel |
-| Click the sun/moon icon in the topbar                                                                                                | A menu with Light / Dark / System appears; picking one immediately re-themes the whole app                            |
-| Reload the page after picking a theme                                                                                                | The theme persists (stored in `localStorage` under `united-hrms-theme`)                                               |
-| Pick "System" and toggle your OS's light/dark setting                                                                                | The app follows it live, no reload needed                                                                             |
-| Click the account icon (top-right)                                                                                                   | The dropdown label now shows your real signed-in email and role(s) (Phase 12, `GET /auth/me/`) instead of "Signed-in user" |
-| Click the account icon (top-right), then "Sign out"                                                                                  | The session is cleared and you're redirected back to `/auth/login` (see B2)                                           |
-| While logged out, try navigating to `/` or any dashboard URL directly                                                                | `ProtectedRoute` redirects you to `/auth/login` instead of rendering the page                                         |
-| Navigate to a nonsense URL, e.g. `/this-does-not-exist`                                                                              | A "Page not found" screen renders inside the Minimal layout, with a button back to the dashboard                      |
+**Permission-based nav/route gating (Leave review round):** "Employees," "Leave," and "Users" only appear in the sidebar if the signed-in user holds the corresponding `*.view_*`/`*.manage_*` permission (`useHasAnyPermission`, `lib/auth/usePermission.ts`) — a user with only Leave/Approval permissions (no `identity.view_users`/`identity.manage_users`) no longer sees "Users" at all. Each of those pages also self-gates on direct URL navigation (typing `/users`, `/employees/new`, etc. straight into the address bar still renders a "You don't have access to..." `EmptyState` instead of the real page if the caller lacks the permission) — defense-in-depth on top of the hidden nav item, matching the existing `LeaveDashboardPage` precedent. Within a page the caller _can_ open, row-level Edit/Deactivate/Activate actions are hidden too if the caller only holds the `view` half of a permission pair, not `manage`. Test this by logging in as a user whose only role grants `leave.manage_leave`/`approvals`-related permissions: "Users" should be absent from the sidebar, and manually navigating to `/users` should show the restricted `EmptyState`, not the User List.
+| Resize the window below the `lg` breakpoint (~1024px), or open dev tools' device toolbar | The sidebar disappears and a hamburger menu button appears in the topbar |
+| Click the hamburger menu on a narrow viewport | A slide-over navigation panel opens from the left with the same links; clicking a link navigates and closes the panel |
+| Click the sun/moon icon in the topbar | A menu with Light / Dark / System appears; picking one immediately re-themes the whole app |
+| Reload the page after picking a theme | The theme persists (stored in `localStorage` under `united-hrms-theme`) |
+| Pick "System" and toggle your OS's light/dark setting | The app follows it live, no reload needed |
+| Click the account icon (top-right) | The dropdown label now shows your real signed-in email and role(s) (Phase 12, `GET /auth/me/`) instead of "Signed-in user" |
+| Click the account icon (top-right), then "Sign out" | The session is cleared and you're redirected back to `/auth/login` (see B2) |
+| While logged out, try navigating to `/` or any dashboard URL directly | `ProtectedRoute` redirects you to `/auth/login` instead of rendering the page |
+| Navigate to a nonsense URL, e.g. `/this-does-not-exist` | A "Page not found" screen renders inside the Minimal layout, with a button back to the dashboard |
 
 ---
 
@@ -130,19 +130,19 @@ below assumes that's already up.
 
 ### B2.2 Validation
 
-| Action                                                      | Expect                                                                             |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| Click "Sign in" with both fields empty                       | "Email is required" and "Password is required" appear under each field, no network request is made |
-| Type a non-email string into the Email field, then blur it   | "Enter a valid email address" appears under the field                                  |
-| Fix the field after an error                                  | The field-level error clears once you move focus (validation mode is `onTouched`)      |
+| Action                                                     | Expect                                                                                             |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Click "Sign in" with both fields empty                     | "Email is required" and "Password is required" appear under each field, no network request is made |
+| Type a non-email string into the Email field, then blur it | "Enter a valid email address" appears under the field                                              |
+| Fix the field after an error                               | The field-level error clears once you move focus (validation mode is `onTouched`)                  |
 
 ### B2.3 Server-side errors
 
-| Scenario                                                             | Expect                                                                              |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Correct email, wrong password                                          | A red banner above the form: "Incorrect email or password." (backend's `invalid_credentials`, 401) |
-| A deactivated account's credentials (`is_active=False` on the user)     | A red banner: "This account has been deactivated. Contact your administrator." (`inactive_user`, 401) |
-| Backend not running / unreachable                                       | A red banner: "Unable to reach the server. Check your connection and try again."    |
+| Scenario                                                            | Expect                                                                                                |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Correct email, wrong password                                       | A red banner above the form: "Incorrect email or password." (backend's `invalid_credentials`, 401)    |
+| A deactivated account's credentials (`is_active=False` on the user) | A red banner: "This account has been deactivated. Contact your administrator." (`inactive_user`, 401) |
+| Backend not running / unreachable                                   | A red banner: "Unable to reach the server. Check your connection and try again."                      |
 
 None of these should ever throw an unhandled error to the console or show a
 blank screen — every failure path is caught and rendered as the banner
@@ -150,13 +150,13 @@ above the form, with the form itself still usable for a retry.
 
 ### B2.4 Session lifecycle
 
-| Action                                                                                                                          | Expect                                                                                                        |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| While logged in, navigate to `/auth/login` directly                                                                             | `PublicOnlyRoute` redirects you straight back to the dashboard — you never see the login form while authenticated |
-| Click "Sign out" from the account menu                                                                                          | `POST /auth/logout/` fires (check the Network tab), both token keys are cleared from Local Storage, and you land on `/auth/login` |
-| Manually delete `united-hrms-access-token` from Local Storage while on a dashboard page, then navigate to another sidebar link   | You're redirected to `/auth/login` — a missing/expired access token is treated the same as never having logged in |
+| Action                                                                                                                                                       | Expect                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| While logged in, navigate to `/auth/login` directly                                                                                                          | `PublicOnlyRoute` redirects you straight back to the dashboard — you never see the login form while authenticated                                               |
+| Click "Sign out" from the account menu                                                                                                                       | `POST /auth/logout/` fires (check the Network tab), both token keys are cleared from Local Storage, and you land on `/auth/login`                               |
+| Manually delete `united-hrms-access-token` from Local Storage while on a dashboard page, then navigate to another sidebar link                               | You're redirected to `/auth/login` — a missing/expired access token is treated the same as never having logged in                                               |
 | Log in, wait past the access token's lifetime (`JWT_ACCESS_TOKEN_LIFETIME_MINUTES` in the backend's settings — 15 min by default), then trigger any API call | The request 401s once, httpClient silently exchanges the refresh token for a new pair behind the scenes, and the original request succeeds without you noticing |
-| Repeat the above but first also delete `united-hrms-refresh-token`                                                              | The silent refresh has nothing to use, both tokens are cleared, and the next protected navigation redirects to `/auth/login` |
+| Repeat the above but first also delete `united-hrms-refresh-token`                                                                                           | The silent refresh has nothing to use, both tokens are cleared, and the next protected navigation redirects to `/auth/login`                                    |
 
 ---
 
@@ -313,7 +313,7 @@ Needs an admin account with `identity.view_users`/`identity.manage_users`
    different user" if applicable).
 3. Select an unlinked employee, click "Link employee". Expect a success
    toast, the dialog closing, and the user's row now showing "Linked".
-4. Repeat, this time selecting an employee already linked to a *different*
+4. Repeat, this time selecting an employee already linked to a _different_
    user. Expect a red error toast: the backend's `user_already_linked`
    message.
 5. **Bugfix regression check**: if you linked the account you're currently
@@ -321,7 +321,7 @@ Needs an admin account with `identity.view_users`/`identity.manage_users`
    menu's roles/label to keep matching, and `GET /auth/me/`'s `employee_id`
    (check via Postman, or your browser's Network tab) to now be non-null —
    before this bugfix, `employee_id` never got set at all, regardless of
-   how the link was made. Employees linked *before* this fix shipped need a
+   how the link was made. Employees linked _before_ this fix shipped need a
    one-time `python manage.py backfill_user_employee_links` (run from
    `backend/`, see `EMPLOYEE_API.md`) to catch up.
 
@@ -368,7 +368,7 @@ has both by default).
    full-replace update (unchecked permissions are actually revoked, not left
    alone).
 5. Edit the **Admin** role. Expect an inline note that it's a built-in
-   system role but can still be edited. Confirm you *can* save a permission
+   system role but can still be edited. Confirm you _can_ save a permission
    change to it (only deletion is blocked, not editing).
 6. Delete your custom role while it's still assigned to a user (assign it to
    someone first via B4.2's Edit dialog). Expect a red error toast for a
@@ -386,7 +386,7 @@ has both by default).
 
 Top-level nav item ("Leave"), same placement `layouts/DashboardLayout/navigation.ts`
 already reserved back in Phase 10. **As of the Leave review round, this tab is
-HR/Admin leave *processing* only** — it never shows the logged-in user's own
+HR/Admin leave _processing_ only** — it never shows the logged-in user's own
 leave, and there is no self-service Apply/Cancel/Dashboard surface here
 anymore (an employee's own balance/history now lives on their Employee
 Details page instead — see B3.3). Everything in this Part needs
@@ -485,7 +485,7 @@ endpoint — only the pre-filled year/copy differs.
    that employee's balance for that year (check via their Employee Details
    Leave section, B3.3 — there's no balance-card view on the Dashboard
    anymore).
-2. Click "Adjust Balance". Pick the same employee/leave type/the *current*
+2. Click "Adjust Balance". Pick the same employee/leave type/the _current_
    year (which already has a row), change the entitled days, and submit.
    Expect a success toast ("Leave balance adjusted").
 3. Submit either dialog with a negative day value. Expect a red error
@@ -524,7 +524,7 @@ this round, so B6.1/B6.2 below cover both shapes.
 
 1. As the manager, click "Decide" on the level-1 request. Add an optional
    comment, click "Approve". Expect a success toast, the request removed
-   from *the manager's* pending list — but **not yet marked `approved`**:
+   from _the manager's_ pending list — but **not yet marked `approved`**:
    checking the Leave Dashboard (B5.1) or the employee's Employee Details
    Leave section (B3.3) should still show `status: pending`. This is the
    Leave review round's core change — a manager's approval alone no longer
@@ -681,17 +681,17 @@ what a real deployment would serve.
 
 ## Part H — Troubleshooting
 
-| Symptom                                                                        | Likely cause / fix                                                                                                                                                               |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm install` fails on a peer dependency error                                 | Confirm `node -v` is 20 or newer; older Node versions aren't supported by this toolchain                                                                                         |
-| Dev server starts but the page is blank, console shows an env validation error | `.env` is missing or a value doesn't match `.env.example`'s shape — re-copy `.env.example` and check `VITE_API_BASE_URL` is a full valid URL                                     |
-| Theme doesn't persist after reload                                             | Check the browser isn't blocking `localStorage` (private/incognito mode with strict settings can do this)                                                                        |
-| `npm run lint` fails with parser errors about `tsconfig`                       | Run `npm run typecheck` first — ESLint's type-aware rules need a project that already type-checks cleanly                                                                        |
-| `npm run build` fails but `npm run dev` works fine                             | `vite dev` doesn't type-check by default; `npm run build`'s `tsc -b` step catches type errors dev mode would silently let through — run `npm run typecheck` to see them directly |
-| Tests fail with "matchMedia is not a function"                                 | Should not happen — `src/test/setupTests.ts` stubs it for jsdom. If you see this, confirm `vitest.config.ts`'s `setupFiles` still points at that file                            |
-| Login always redirects back to `/auth/login` even with correct credentials     | Check the Network tab for the actual `POST /auth/login/` response — a CORS failure or wrong `VITE_API_BASE_URL` looks identical to a bad password from the UI. Also confirm the backend is actually running (`../backend`'s `TESTING_GUIDE.md`)                                 |
-| Logged-in session is lost on every page reload                                 | Check dev tools → Application → Local Storage for `united-hrms-access-token`/`united-hrms-refresh-token` — if the browser is blocking `localStorage` (see the theme row above), the session can't persist either                                                                |
-| Stuck in a redirect loop between `/` and `/auth/login`                         | This should not happen — `ProtectedRoute` and `PublicOnlyRoute` (`src/app/router/`) both read the same `useAuth()` state. If you see this, check that `AuthProvider` is mounted above the router in `app/providers/AppProviders.tsx`                                            |
+| Symptom                                                                        | Likely cause / fix                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm install` fails on a peer dependency error                                 | Confirm `node -v` is 20 or newer; older Node versions aren't supported by this toolchain                                                                                                                                                        |
+| Dev server starts but the page is blank, console shows an env validation error | `.env` is missing or a value doesn't match `.env.example`'s shape — re-copy `.env.example` and check `VITE_API_BASE_URL` is a full valid URL                                                                                                    |
+| Theme doesn't persist after reload                                             | Check the browser isn't blocking `localStorage` (private/incognito mode with strict settings can do this)                                                                                                                                       |
+| `npm run lint` fails with parser errors about `tsconfig`                       | Run `npm run typecheck` first — ESLint's type-aware rules need a project that already type-checks cleanly                                                                                                                                       |
+| `npm run build` fails but `npm run dev` works fine                             | `vite dev` doesn't type-check by default; `npm run build`'s `tsc -b` step catches type errors dev mode would silently let through — run `npm run typecheck` to see them directly                                                                |
+| Tests fail with "matchMedia is not a function"                                 | Should not happen — `src/test/setupTests.ts` stubs it for jsdom. If you see this, confirm `vitest.config.ts`'s `setupFiles` still points at that file                                                                                           |
+| Login always redirects back to `/auth/login` even with correct credentials     | Check the Network tab for the actual `POST /auth/login/` response — a CORS failure or wrong `VITE_API_BASE_URL` looks identical to a bad password from the UI. Also confirm the backend is actually running (`../backend`'s `TESTING_GUIDE.md`) |
+| Logged-in session is lost on every page reload                                 | Check dev tools → Application → Local Storage for `united-hrms-access-token`/`united-hrms-refresh-token` — if the browser is blocking `localStorage` (see the theme row above), the session can't persist either                                |
+| Stuck in a redirect loop between `/` and `/auth/login`                         | This should not happen — `ProtectedRoute` and `PublicOnlyRoute` (`src/app/router/`) both read the same `useAuth()` state. If you see this, check that `AuthProvider` is mounted above the router in `app/providers/AppProviders.tsx`            |
 
 ---
 
@@ -704,6 +704,7 @@ Employee Management, Department CRUD, and User Management — see
 phase adds another real module (Leave, Approvals, ...), this file should
 grow a new Part for that module's own manual test walkthrough, the same way
 Parts B2/B3/B4 were added here — mirroring how `../TESTING_GUIDE.md` (backend
-+ Telegram Gateway) grows a new part per phase. Part B4.6 above also flags
-one open item worth picking up before then: Vitest coverage for the Phase 12
-modules.
+
+- Telegram Gateway) grows a new part per phase. Part B4.6 above also flags
+  one open item worth picking up before then: Vitest coverage for the Phase 12
+  modules.

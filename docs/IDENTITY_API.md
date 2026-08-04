@@ -243,7 +243,7 @@ Seeded by `apps/identity/migrations/0002_seed_system_roles.py`, run automaticall
 |---|---|---|
 | Admin | `true` | `identity.view_users`, `identity.manage_users`, `identity.view_roles`, `identity.manage_roles` |
 
-`migrations/0006_rename_admin_role_and_prune_system_roles.py` renamed the originally-seeded "HR Admin" role to "Admin" in place (same row/id — every permission grant it already held, including ones other modules' own seed migrations granted it by name, carried over automatically) and deleted the four other originally-seeded roles (Employee, Manager, Payroll Admin, Recruiter) outright. The seeded admin user (created via `create_admin_user`/`seed_demo_data`) is assigned this "Admin" role.
+`migrations/0006_rename_admin_role_and_prune_system_roles.py` renamed the originally-seeded "HR Admin" role to "Admin" in place (same row/id — every permission grant it already held, including ones other modules' own seed migrations granted it by name, carried over automatically) and deleted the four other originally-seeded roles (Employee, Manager, Payroll Admin, Recruiter) outright. The seeded admin user (created via `create_admin_user`) is assigned this "Admin" role.
 
 Every other role — Manager, Auditor, or anything else an organization needs — is created and managed entirely through the Role Management API/UI documented above; nothing else is seeded. Future modules (Leave, Payroll, ...) continue to add their own `Permission` rows via their own migrations, exactly as before — this seed data never needs to change for that to happen.
 

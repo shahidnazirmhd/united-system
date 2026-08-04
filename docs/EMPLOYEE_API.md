@@ -49,7 +49,7 @@ Response `201`:
   "success": true,
   "data": {
     "id": "018f...",
-    "employee_code": "EMP-000001",
+    "employee_code": "E000001",
     "user_id": null,
     "first_name": "Ada",
     "last_name": "Lovelace",
@@ -142,7 +142,7 @@ Step 1 of linking: validates the employee code and dispatches a one-time OTP to 
 
 Request:
 ```json
-{ "employee_code": "EMP-000123", "telegram_user_id": 123456789, "chat_id": 123456789, "telegram_username": "ada" }
+{ "employee_code": "E000123", "telegram_user_id": 123456789, "chat_id": 123456789, "telegram_username": "ada" }
 ```
 
 Response `200`: `{ "detail": "OTP dispatched to the employee's registered email(s)." }`
@@ -332,7 +332,7 @@ Errors: `404 employee_not_found`, `409 invalid_employee_status_transition`.
 
 **Department CRUD follows Employee's own precedent almost exactly** — a `BaseService`-driven command service, a hand-written query service that resolves enrichment fields only on single-record reads, and a thin facade the ViewSet depends on, all for the identical reason: `BaseViewSet`'s generic `list()`/`retrieve()` need an *enriched* response DTO back, not a raw domain entity.
 
-**`employee_code` is never client-supplied.** It's generated from a real Postgres sequence at creation time (`EMP-000001`, `EMP-000002`, ...) — race-safe under concurrent creates, unlike a row-count-based scheme.
+**`employee_code` is never client-supplied.** It's generated from a real Postgres sequence at creation time (`E000001`, `E000002`, ...) — race-safe under concurrent creates, unlike a row-count-based scheme.
 
 **Soft delete, not hard delete.** Employee records use `shared_kernel`'s `SoftDeleteModel` — there is no delete endpoint in this phase; deactivation (`SUSPENDED`) is the supported way to take an employee out of active circulation without destroying history.
 
