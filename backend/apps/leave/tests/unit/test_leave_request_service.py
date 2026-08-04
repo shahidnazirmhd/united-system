@@ -182,12 +182,21 @@ class FakeApprovalRequestPort:
         # regardless of the leave request's own prior status.
         self.cancelled: list[dict] = []
 
-    def create_approval_request(self, *, subject_id, requested_by_employee_id, subject_summary):
+    def create_approval_request(
+        self, *, subject_id, requested_by_employee_id, subject_summary, start_at_level: int = 1
+    ):
         self.created.append(
             {
                 "subject_id": subject_id,
                 "requested_by_employee_id": requested_by_employee_id,
                 "subject_summary": subject_summary,
+                # HR Leave Workflow round, item 1 — recorded so a test can
+                # assert `apply_leave` passed the right start level (2 when
+                # `LeaveValidationService.evaluate_level1_approval` decided
+                # to skip Level 1, 1 otherwise). Default keeps every
+                # existing test's assertion on `self.created[...]` valid
+                # without needing to know about this key.
+                "start_at_level": start_at_level,
             }
         )
 

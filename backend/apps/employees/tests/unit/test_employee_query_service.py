@@ -20,7 +20,7 @@ from shared_kernel.domain.value_objects import Email
 def _employee(first_name: str, work_email: str, *, department_id: uuid.UUID | None = None) -> Employee:
     return Employee(
         id=uuid.uuid4(),
-        employee_code=f"EMP-{first_name.upper()}",
+        employee_code=f"E{first_name.upper()}",
         profile=EmployeeProfile(first_name=first_name, last_name="Test"),
         contact_info=ContactInformation(work_email=Email(work_email)),
         employment_info=EmploymentInformation(

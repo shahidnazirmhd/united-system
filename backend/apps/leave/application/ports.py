@@ -190,12 +190,27 @@ class ApprovalRequestPort(ABC):
 
     @abstractmethod
     def create_approval_request(
-        self, *, subject_id: uuid.UUID, requested_by_employee_id: uuid.UUID, subject_summary: str
+        self,
+        *,
+        subject_id: uuid.UUID,
+        requested_by_employee_id: uuid.UUID,
+        subject_summary: str,
+        start_at_level: int = 1,
     ) -> None:
         """Opens a new approval request for the leave request identified by
         `subject_id` (`LeaveRequest.id`). `subject_type` is fixed to
         `"leave.leave_request"` by the adapter itself — callers in this
-        module never need to know or repeat that string."""
+        module never need to know or repeat that string.
+
+        `start_at_level` (HR Leave Workflow round, item 1) — defaults to 1
+        (unchanged behavior for every existing caller). `LeaveRequestService
+        .apply_leave` passes `2` only when
+        `LeaveValidationService.evaluate_level1_approval` determined the
+        HR-on-behalf applicant's employee has no notifiable manager,
+        skipping straight to HR/Admin (level 2) review. This module decides
+        the level; the adapter and the underlying engine only execute it —
+        see `apps.approvals.application.dtos.CreateApprovalRequestRequest
+        .start_at_level`'s own docstring for the engine side of this."""
         raise NotImplementedError
 
     @abstractmethod

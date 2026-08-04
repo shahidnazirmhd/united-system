@@ -79,7 +79,7 @@ def test_create_employee_succeeds_for_hr_admin(hr_admin_client, department) -> N
     )
 
     assert response.status_code == 201, response.data
-    assert response.data["data"]["employee_code"].startswith("EMP-")
+    assert response.data["data"]["employee_code"].startswith("E")
     assert response.data["data"]["status"] == "active"
     assert response.data["data"]["full_name"] == "Ada Lovelace"
 
@@ -158,7 +158,7 @@ def employee_self_service_client(department, zero_permission_role):
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
 
     employee_record = EmployeeRecord.objects.create(
-        employee_code="EMP-000042",
+        employee_code="E000042",
         user_id=user.id,
         first_name="Ada",
         last_name="Lovelace",

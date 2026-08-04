@@ -63,3 +63,43 @@ class EmployeeOTPEmailPort(ABC):
     @abstractmethod
     def send_link_otp(self, *, to_emails: Sequence[str], employee_name: str, otp: str) -> None:
         raise NotImplementedError
+
+
+class LeaveReferenceCheckPort(ABC):
+    """HR Leave Workflow round, item 2 — the reverse-port pattern this
+    codebase already uses twice (`apps.attendance.application.ports
+    .LeaveReferenceCheckPort` for Holiday edits, `apps.settings.application
+    .ports.LeaveReferenceCheckPort` for Default Week Off changes), applied
+    a third time: Employees depends on Leave to answer "would changing this
+    employee's Current Status to a terminal/inactive value silently orphan
+    a real leave request," never the other way around — `apps.leave` has
+    no knowledge of this port's existence. The concrete adapter
+    (infrastructure/leave_reference_check_adapter.py) is the only file in
+    this module allowed to import `apps.leave`, and even then only its
+    public composition root (`apps.leave.interface.dependencies
+    .build_leave_service`), never that module's infrastructure directly.
+    """
+
+    @abstractmethod
+    def has_active_or_upcoming_leave_request(self, employee_id: uuid.UUID) -> bool:
+        """True if this employee has any PENDING/APPROVED leave request
+        that is either currently in progress or still entirely in the
+        future. Used by `EmployeeCommandService.update_current_status` to
+        block manually setting Current Status to NOT_JOINED, RESIGNED, or
+        TERMINATED while such a request exists."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def has_active_or_upcoming_approved_leave(self, employee_id: uuid.UUID) -> bool:
+        """Follow-up HR Leave Workflow round, item 1 — narrower than
+        `has_active_or_upcoming_leave_request` above (APPROVED only, never
+        PENDING — a merely-pending request never drives Current Status, so
+        it must never lock the field). Used by `EmployeeCommandService
+        .update_current_status` to block ANY manual Current Status change
+        (not just a change to a terminal value) while this employee has an
+        approved leave request that is either already in progress or still
+        entirely in the future — Current Status is either already being
+        driven automatically by that request, or is about to be, so a
+        manual edit in the meantime would just get silently overwritten
+        (or fought with) the moment the automatic sync runs."""
+        raise NotImplementedError

@@ -80,7 +80,7 @@ def _recent_activity_item() -> RecentActivityItem:
         leave_request_id=uuid.uuid4(),
         employee_id=uuid.uuid4(),
         employee_name="Ada Lovelace",
-        employee_code="EMP-001",
+        employee_code="E001",
         leave_type_name="Annual Leave",
         status="approved",
         start_date=date(2026, 8, 1),

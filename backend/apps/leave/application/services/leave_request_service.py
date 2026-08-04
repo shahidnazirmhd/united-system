@@ -22,6 +22,7 @@ from apps.leave.application.dtos import (
     ApplyLeaveRequest,
     ApproveLeaveRequest,
     CancelLeaveRequest,
+    Level1ApprovalCheckResponse,
     LeaveMonthlyStat,
     LeaveRequestResponse,
     LeaveStatisticsResponse,
@@ -150,6 +151,35 @@ class LeaveRequestService(BaseService[LeaveRequest]):
     def has_any_active_request(self) -> bool:
         return self._requests.exists_any_active_request()
 
+    # --- Cross-module referential-integrity check for Employees (HR Leave
+    # Workflow round, item 2) --------------------------------------------
+    # Consumed through `LeaveService.has_active_or_upcoming_request_for_employee`
+    # by the new reverse port `apps.employees.application.ports
+    # .LeaveReferenceCheckPort` — same "Employees depends on Leave, never
+    # the other way around" direction as the two methods above, just keyed
+    # to one specific employee instead of system-wide.
+    def has_active_or_upcoming_request_for_employee(self, employee_id: uuid.UUID) -> bool:
+        return self._requests.exists_active_or_upcoming_request_for_employee(employee_id, as_of=date.today())
+
+    def has_active_or_upcoming_approved_leave_for_employee(self, employee_id: uuid.UUID) -> bool:
+        """Follow-up HR Leave Workflow round, item 1 — see
+        `LeaveRequestRepository.exists_active_or_upcoming_approved_request_for_employee`'s
+        docstring for why this is APPROVED-only, a distinct (narrower)
+        check from `has_active_or_upcoming_request_for_employee` above."""
+        return self._requests.exists_active_or_upcoming_approved_request_for_employee(
+            employee_id, as_of=date.today()
+        )
+
+    # --- HR Leave Workflow round, item 1 ------------------------------
+    def check_level1_approval(self, employee_id: uuid.UUID) -> Level1ApprovalCheckResponse:
+        """Read-only preview backing the HR-on-behalf Apply Leave dialog's
+        pre-submit confirmation step — calls the exact same
+        `LeaveValidationService.evaluate_level1_approval` that `apply_leave`
+        itself calls below, so the dialog's warning and the actual outcome
+        can never disagree."""
+        should_skip, reason = self._validate.evaluate_level1_approval(employee_id)
+        return Level1ApprovalCheckResponse(will_skip_level1=should_skip, skip_reason=reason)
+
     # --- writes -----------------------------------------------------
     def apply_leave(self, request: ApplyLeaveRequest) -> LeaveRequestResponse:
         """Full validation pipeline, in order: employee exists -> employee
@@ -160,7 +190,17 @@ class LeaveRequestService(BaseService[LeaveRequest]):
         14 item 6 — not calendar days; see `working_days_calculator.py`).
         Each step raises its own specific exception on failure — see
         `LeaveValidationService`.
+
+        HR Leave Workflow round, item 1: when `request.initiated_by_hr` is
+        True, the level-1 (manager) precondition is no longer a hard
+        blocker — `LeaveValidationService.evaluate_level1_approval` (the
+        non-raising twin of the check below) decides instead whether to
+        proceed with a normal level-1 chain or skip straight to level 2.
+        Self-service (web and Telegram) callers are untouched: they always
+        hard-require a notifiable manager, exactly as before.
         """
+        level1_skipped = False
+        level1_skip_reason: str | None = None
         try:
             self._validate.validate_employee_exists(request.employee_id)
             self._validate.validate_employee_eligible_for_leave(request.employee_id)
@@ -168,8 +208,12 @@ class LeaveRequestService(BaseService[LeaveRequest]):
             # before any date/balance work, since neither a no-manager nor
             # a manager-not-linked-to-Telegram employee can ever have this
             # leave request approved regardless of what the rest of the
-            # pipeline finds.
-            self._validate.validate_manager_available_for_approval(request.employee_id)
+            # pipeline finds. HR-on-behalf applications get the non-raising
+            # evaluation instead (item 1) — everyone else still hard-blocks.
+            if request.initiated_by_hr:
+                level1_skipped, level1_skip_reason = self._validate.evaluate_level1_approval(request.employee_id)
+            else:
+                self._validate.validate_manager_available_for_approval(request.employee_id)
             leave_type = self._validate.validate_and_get_leave_type(request.leave_type_id)
             date_range = self._validate.build_date_range(request.start_date, request.end_date)
             self._validate.validate_not_past(request.start_date)
@@ -228,6 +272,13 @@ class LeaveRequestService(BaseService[LeaveRequest]):
             reason=request.reason,
             working_days=working_days,
             balance_at_application=balance_snapshot,
+            level1_skipped=level1_skipped,
+            level1_skip_reason=level1_skip_reason,
+            initiated_via=(
+                "hr" if request.initiated_by_hr else ("telegram" if request.initiator_telegram_user_id is not None else None)
+            ),
+            initiator_user_id=request.created_by if request.initiated_by_hr else None,
+            initiator_telegram_user_id=request.initiator_telegram_user_id,
         )
         with self._uow:
             created = self._requests.create(leave_request)
@@ -255,6 +306,12 @@ class LeaveRequestService(BaseService[LeaveRequest]):
                     f"{created.date_range.end_date} "
                     f"({created.total_days} day(s) total, {created.working_days} working day(s))"
                 ),
+                # HR Leave Workflow round, item 1 — skip straight to level 2
+                # (HR/Admin review) when this HR-on-behalf application's
+                # employee had no notifiable manager. `level1_skipped` is
+                # always False for self-service applications, so this is a
+                # no-op (`start_at_level=1`) for every other caller.
+                start_at_level=2 if level1_skipped else 1,
             )
         self._event_bus.publish(
             LeaveRequestApplied(
@@ -266,13 +323,14 @@ class LeaveRequestService(BaseService[LeaveRequest]):
             )
         )
         logger.info(
-            "Leave applied: request=%s employee=%s leave_type=%s %s..%s (%s day(s))",
+            "Leave applied: request=%s employee=%s leave_type=%s %s..%s (%s day(s))%s",
             created.id,
             created.employee_id,
             created.leave_type_id,
             created.date_range.start_date,
             created.date_range.end_date,
             created.total_days,
+            f" [level 1 skipped: {created.level1_skip_reason}]" if created.level1_skipped else "",
         )
         return self.to_enriched_response(created)
 

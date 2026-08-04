@@ -30,6 +30,7 @@ from apps.employees.infrastructure.repositories import (
     DjangoEmployeeLinkTokenRepository,
     DjangoEmployeeRepository,
 )
+from apps.employees.infrastructure.leave_reference_check_adapter import LeaveServiceReferenceCheckAdapter
 from apps.employees.infrastructure.user_lookup_adapter import UserServiceLookupAdapter
 from shared_kernel.infrastructure.django_unit_of_work import DjangoUnitOfWork
 from shared_kernel.infrastructure.event_bus_impl import event_bus
@@ -43,6 +44,10 @@ def build_employee_command_service() -> EmployeeCommandService:
         unit_of_work=DjangoUnitOfWork(),
         event_bus=event_bus,
         user_lookup=UserServiceLookupAdapter(),
+        # HR Leave Workflow round, item 2 — see LeaveReferenceCheckPort's
+        # docstring (application/ports.py) for the reverse-dependency
+        # reasoning (Employees depends on Leave, never the other way).
+        leave_reference_check=LeaveServiceReferenceCheckAdapter(),
     )
 
 

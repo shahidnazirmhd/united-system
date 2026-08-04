@@ -147,6 +147,21 @@ class TooManyOTPAttemptsError(ValidationError):
     code = "too_many_otp_attempts"
 
 
+class EmployeeHasActiveOrUpcomingLeaveRequestsError(ValidationError):
+    """HR Leave Workflow round, item 2 — this employee has at least one
+    PENDING or APPROVED leave request that is either in progress or still
+    entirely in the future. Raised when HR attempts to manually change
+    Current Status to NOT_JOINED, RESIGNED, or TERMINATED without first
+    cancelling or letting that leave run its course — marking someone
+    Resigned/Terminated while a real leave request still references them
+    would silently orphan that request (an approved leave for someone who
+    supposedly no longer works here, or a pending request nobody can
+    meaningfully decide on).
+    """
+
+    code = "employee_has_active_or_upcoming_leave_requests"
+
+
 class OTPEmailDeliveryFailedError(DomainError):
     """The OTP was generated and stored, but could not be emailed to any of
     the employee's registered addresses.

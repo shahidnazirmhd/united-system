@@ -49,6 +49,7 @@ from apps.leave.interface.serializers import (
     CancelLeaveSerializer,
     CancelLeaveTelegramSerializer,
     CreateLeaveTypeSerializer,
+    Level1ApprovalCheckResponseSerializer,
     LeaveBalanceAdjustmentResponseSerializer,
     LeaveBalanceResponseSerializer,
     LeaveHistoryQuerySerializer,
@@ -379,9 +380,39 @@ class ApplyLeaveForEmployeeView(APIView):
                 end_date=data["end_date"],
                 reason=data["reason"],
                 created_by=request.user.user_id,
+                # HR Leave Workflow round, item 1 — this is the one endpoint
+                # literally named/scoped for "HR applies on an employee's
+                # behalf" (gated on leave.manage_leave above), so it's the
+                # only caller that ever sets this flag. See
+                # `ApplyLeaveRequest.initiated_by_hr`'s docstring for what
+                # it changes in `apply_leave`.
+                initiated_by_hr=True,
             )
         )
         return success_response(LeaveRequestResponseSerializer(result).data, status_code=201)
+
+
+class Level1ApprovalCheckView(APIView):
+    """GET /api/v1/leave/requests/employee/<employee_id>/level1-approval-check/
+    — HR Leave Workflow round, item 1. Read-only preview the frontend's
+    HR-on-behalf Apply Leave dialog calls before the user confirms
+    submission, so it can show "Level 1 approval will be skipped because
+    ..." ahead of time. Requires leave.manage_leave — same gating as
+    `ApplyLeaveForEmployeeView`, since this is only ever useful to the HR
+    apply-on-behalf flow."""
+
+    permission_classes = [HasPermission(MANAGE_LEAVE)]
+    throttle_classes = [StandardUserRateThrottle]
+
+    @extend_schema(
+        summary="Preview whether Level 1 approval will be skipped for this employee",
+        description="Requires leave.manage_leave. Runs the same check `apply_leave` itself runs for an "
+        "HR-on-behalf application, so the preview can never disagree with the actual outcome.",
+        responses={200: Level1ApprovalCheckResponseSerializer},
+    )
+    def get(self, request: Request, employee_id: uuid.UUID) -> Response:
+        result = dependencies.build_leave_service().check_level1_approval(employee_id)
+        return success_response(Level1ApprovalCheckResponseSerializer(result).data)
 
 
 class CancelLeaveForEmployeeView(APIView):
@@ -674,6 +705,12 @@ class ApplyLeaveTelegramView(APIView):
                 start_date=data["start_date"],
                 end_date=data["end_date"],
                 reason=data["reason"],
+                # HR Leave Workflow round, item 1 — records this as an
+                # "Employee Portal Request" on the created LeaveRequest
+                # (`initiated_via="telegram"`); never sets
+                # `initiated_by_hr`, so this always hard-blocks on the
+                # raising manager-availability check, exactly as before.
+                initiator_telegram_user_id=data["telegram_user_id"],
             )
         )
         return success_response(LeaveRequestResponseSerializer(result).data, status_code=201)

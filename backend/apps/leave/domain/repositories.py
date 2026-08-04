@@ -174,6 +174,36 @@ class LeaveRequestRepository(BaseRepository[LeaveRequest]):
         leave request still depends on."""
         raise NotImplementedError
 
+    @abstractmethod
+    def exists_active_or_upcoming_request_for_employee(self, employee_id: uuid.UUID, *, as_of: date) -> bool:
+        """True if this employee has any PENDING/APPROVED request whose
+        `end_date` is on or after `as_of` — i.e. a request that is either
+        currently in progress or still entirely in the future. Backs the
+        new `apps.employees.application.ports.LeaveReferenceCheckPort`
+        reverse port (HR Leave Workflow round, item 2) exactly the same
+        way the three checks above already back Attendance's/Settings'
+        own reverse ports: Employees depends on Leave to answer "would
+        marking this employee Not Joined/Resigned/Terminated silently
+        orphan a real leave request," Leave never depends on Employees.
+        A `PENDING` request counts too (not just `APPROVED`) since an
+        as-yet-undecided request for a soon-to-be-terminated employee is
+        exactly the kind of thing HR should be stopped and asked about."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def exists_active_or_upcoming_approved_request_for_employee(self, employee_id: uuid.UUID, *, as_of: date) -> bool:
+        """Like `exists_active_or_upcoming_request_for_employee` above, but
+        `APPROVED` only (a `PENDING` request never drives Current Status,
+        so it must never lock the field). Backs the follow-up HR Leave
+        Workflow round's item 1: an employee's Current Status must be
+        blocked from ANY manual edit — not just a change to a terminal
+        value — while they have an approved leave request that is either
+        already in progress or still entirely in the future, since that
+        request is either already driving Current Status automatically or
+        is about to. See `apps.employees.application.ports
+        .LeaveReferenceCheckPort.has_active_or_upcoming_approved_leave`."""
+        raise NotImplementedError
+
     # --- Statistics (Phase 14: Dashboard) --------------------------------
     @abstractmethod
     def get_statistics_snapshot(self, *, monthly_trend_since: date) -> LeaveStatisticsSnapshot:

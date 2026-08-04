@@ -87,6 +87,42 @@ class LeaveValidationService:
         if not self._employees.is_employee_linked_to_telegram(manager_id):
             raise ManagerNotLinkedToTelegramError()
 
+    def evaluate_level1_approval(self, employee_id: uuid.UUID) -> tuple[bool, str | None]:
+        """HR Leave Workflow round, item 1 — the non-raising twin of
+        `validate_manager_available_for_approval` above. Runs the exact
+        same two checks (manager assigned? manager Telegram-linked?) but
+        returns `(should_skip_level1, skip_reason_code)` instead of
+        raising, so it can be used as a plain yes/no decision rather than
+        an abort.
+
+        Only ever called for HR-on-behalf applications
+        (`ApplyLeaveRequest.initiated_by_hr=True`) — self-service (web or
+        Telegram) always uses the raising `validate_manager_available_for_approval`
+        and hard-blocks instead, unchanged. This is deliberate: an
+        employee applying for themselves who has no notifiable manager is
+        a data problem HR needs to go fix (assign a manager / get the
+        manager onto Telegram), not something to silently route around.
+        But when HR is *already* the one applying on the employee's
+        behalf, they are demonstrably able to see and act on the request
+        themselves at level 2, so auto-skipping level 1 and going straight
+        to HR/Admin review is a reasonable, generic escalation — not a
+        bypass of approval, just a shorter chain.
+
+        `skip_reason_code` is one of `NoManagerAssignedError.code` /
+        `ManagerNotLinkedToTelegramError.code` (reused verbatim, never
+        re-invented) when `should_skip` is `True`, else `None`. Both the
+        new preview endpoint (`LeaveRequestService.check_level1_approval`)
+        and `apply_leave` itself call this one method, so the confirmation
+        dialog the HR user sees before submitting can never disagree with
+        what actually happens on submit.
+        """
+        manager_id = self._employees.get_manager_employee_id(employee_id)
+        if manager_id is None:
+            return True, NoManagerAssignedError.code
+        if not self._employees.is_employee_linked_to_telegram(manager_id):
+            return True, ManagerNotLinkedToTelegramError.code
+        return False, None
+
     def validate_and_get_leave_type(self, leave_type_id: uuid.UUID) -> LeaveType:
         leave_type = self._leave_types.get_by_id(leave_type_id)
         if leave_type is None or not leave_type.is_active:

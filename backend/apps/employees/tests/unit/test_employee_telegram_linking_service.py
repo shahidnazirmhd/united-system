@@ -172,7 +172,7 @@ def _employee(**overrides) -> Employee:
     personal_email = overrides.pop("personal_email", None)
     return Employee(
         id=overrides.pop("id", uuid.uuid4()),
-        employee_code=overrides.pop("employee_code", "EMP-000001"),
+        employee_code=overrides.pop("employee_code", "E000001"),
         user_id=None,
         profile=EmployeeProfile(first_name="Grace", last_name="Hopper"),
         contact_info=ContactInformation(
@@ -207,13 +207,13 @@ def _service(employees=None, link_tokens=None, otp_sender=None):
 
 
 def test_request_link_dispatches_otp_to_work_email() -> None:
-    employee = _employee(employee_code="EMP-000001", work_email="grace@example.com")
+    employee = _employee(employee_code="E000001", work_email="grace@example.com")
     employees = FakeEmployeeRepository([employee])
     otp_sender = FakeOTPEmailSender()
     service = _service(employees=employees, otp_sender=otp_sender)
 
     service.request_link(
-        RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=42, chat_id=42)
+        RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=42, chat_id=42)
     )
 
     assert len(otp_sender.sent) == 1
@@ -223,14 +223,14 @@ def test_request_link_dispatches_otp_to_work_email() -> None:
 
 def test_request_link_dispatches_otp_to_both_work_and_personal_email() -> None:
     employee = _employee(
-        employee_code="EMP-000001", work_email="grace@example.com", personal_email="grace.h@personal.example.com"
+        employee_code="E000001", work_email="grace@example.com", personal_email="grace.h@personal.example.com"
     )
     employees = FakeEmployeeRepository([employee])
     otp_sender = FakeOTPEmailSender()
     service = _service(employees=employees, otp_sender=otp_sender)
 
     service.request_link(
-        RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=42, chat_id=42)
+        RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=42, chat_id=42)
     )
 
     assert len(otp_sender.sent) == 1
@@ -239,14 +239,14 @@ def test_request_link_dispatches_otp_to_both_work_and_personal_email() -> None:
 
 def test_request_link_dispatches_otp_once_when_personal_email_matches_work_email() -> None:
     employee = _employee(
-        employee_code="EMP-000001", work_email="grace@example.com", personal_email="grace@example.com"
+        employee_code="E000001", work_email="grace@example.com", personal_email="grace@example.com"
     )
     employees = FakeEmployeeRepository([employee])
     otp_sender = FakeOTPEmailSender()
     service = _service(employees=employees, otp_sender=otp_sender)
 
     service.request_link(
-        RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=42, chat_id=42)
+        RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=42, chat_id=42)
     )
 
     assert otp_sender.sent[0]["to_emails"] == ["grace@example.com"]
@@ -257,40 +257,40 @@ def test_request_link_raises_for_unknown_employee_code() -> None:
 
     with pytest.raises(EmployeeNotFoundError):
         service.request_link(
-            RequestEmployeeTelegramLinkRequest(employee_code="EMP-999999", telegram_user_id=1, chat_id=1)
+            RequestEmployeeTelegramLinkRequest(employee_code="E999999", telegram_user_id=1, chat_id=1)
         )
 
 
 def test_request_link_raises_for_terminated_employee() -> None:
-    employee = _employee(employee_code="EMP-000001", status=EmployeeStatus.TERMINATED)
+    employee = _employee(employee_code="E000001", status=EmployeeStatus.TERMINATED)
     service = _service(employees=FakeEmployeeRepository([employee]))
 
     with pytest.raises(EmployeeNotActiveError):
         service.request_link(
-            RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=1, chat_id=1)
+            RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=1, chat_id=1)
         )
 
 
 def test_request_link_raises_when_telegram_id_linked_to_different_employee() -> None:
     other_employee_id = uuid.uuid4()
-    already_linked = _employee(id=other_employee_id, employee_code="EMP-000002", telegram_user_id=42)
-    requester = _employee(employee_code="EMP-000001")
+    already_linked = _employee(id=other_employee_id, employee_code="E000002", telegram_user_id=42)
+    requester = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([already_linked, requester])
     service = _service(employees=employees)
 
     with pytest.raises(DuplicateTelegramLinkError):
         service.request_link(
-            RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=42, chat_id=42)
+            RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=42, chat_id=42)
         )
 
 
 def test_request_link_raises_when_employee_already_linked_to_a_different_telegram_account() -> None:
-    employee = _employee(employee_code="EMP-000001", telegram_user_id=111)
+    employee = _employee(employee_code="E000001", telegram_user_id=111)
     service = _service(employees=FakeEmployeeRepository([employee]))
 
     with pytest.raises(EmployeeAlreadyLinkedToTelegramError):
         service.request_link(
-            RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=222, chat_id=222)
+            RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=222, chat_id=222)
         )
 
 
@@ -300,32 +300,32 @@ def test_request_link_allows_re_requesting_otp_for_the_same_already_linked_teleg
     simply re-running /link out of habit) is not a re-link attempt and must
     not be blocked — only linking to a *different* Telegram account should
     require an explicit /unlink first."""
-    employee = _employee(employee_code="EMP-000001", telegram_user_id=111)
+    employee = _employee(employee_code="E000001", telegram_user_id=111)
     otp_sender = FakeOTPEmailSender()
     service = _service(employees=FakeEmployeeRepository([employee]), otp_sender=otp_sender)
 
     service.request_link(
-        RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=111, chat_id=111)
+        RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=111, chat_id=111)
     )
 
     assert len(otp_sender.sent) == 1
 
 
 def test_request_link_raises_otp_email_delivery_failed_when_every_recipient_fails() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     otp_sender = FakeOTPEmailSender(fail_with=EmailDeliveryError("SMTP server unavailable"))
     service = _service(employees=FakeEmployeeRepository([employee]), otp_sender=otp_sender)
 
     with pytest.raises(OTPEmailDeliveryFailedError):
         service.request_link(
-            RequestEmployeeTelegramLinkRequest(employee_code="EMP-000001", telegram_user_id=1, chat_id=1)
+            RequestEmployeeTelegramLinkRequest(employee_code="E000001", telegram_user_id=1, chat_id=1)
         )
 
 
 # --- verify_link -------------------------------------------------------
 
 
-def _requested_link(employees=None, link_tokens=None, otp_sender=None, employee_code="EMP-000001"):
+def _requested_link(employees=None, link_tokens=None, otp_sender=None, employee_code="E000001"):
     """Runs request_link for real, then hands back the sent OTP string so
     a test can verify with it — avoids each verify_link test needing to
     reach into token internals to fabricate a valid hash by hand."""
@@ -339,7 +339,7 @@ def _requested_link(employees=None, link_tokens=None, otp_sender=None, employee_
 
 
 def test_verify_link_stores_telegram_id_on_employee() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     service, otp = _requested_link(employees=employees, link_tokens=link_tokens)
@@ -356,7 +356,7 @@ def test_verify_link_stores_telegram_id_on_employee() -> None:
 
 
 def test_verify_link_raises_for_wrong_otp() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     service, _otp = _requested_link(employees=employees, link_tokens=link_tokens)
@@ -366,7 +366,7 @@ def test_verify_link_raises_for_wrong_otp() -> None:
 
 
 def test_verify_link_locks_out_after_max_attempts() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     service, otp = _requested_link(employees=employees, link_tokens=link_tokens)
@@ -383,7 +383,7 @@ def test_verify_link_locks_out_after_max_attempts() -> None:
 
 
 def test_verify_link_succeeds_within_the_attempt_budget() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     service, otp = _requested_link(employees=employees, link_tokens=link_tokens)
@@ -399,7 +399,7 @@ def test_verify_link_succeeds_within_the_attempt_budget() -> None:
 
 
 def test_verify_link_raises_for_reused_otp() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     service, otp = _requested_link(employees=employees, link_tokens=link_tokens)
@@ -412,7 +412,7 @@ def test_verify_link_raises_for_reused_otp() -> None:
 
 def test_verify_link_raises_for_expired_otp() -> None:
     employee_id = uuid.uuid4()
-    employee = _employee(id=employee_id, employee_code="EMP-000001")
+    employee = _employee(id=employee_id, employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     expired_token = EmployeeLinkToken(
@@ -432,7 +432,7 @@ def test_verify_link_raises_for_expired_otp() -> None:
 
 
 def test_verify_link_raises_when_chat_id_does_not_match_request() -> None:
-    employee = _employee(employee_code="EMP-000001")
+    employee = _employee(employee_code="E000001")
     employees = FakeEmployeeRepository([employee])
     link_tokens = FakeEmployeeLinkTokenRepository()
     service, otp = _requested_link(employees=employees, link_tokens=link_tokens)

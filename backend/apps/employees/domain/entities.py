@@ -225,18 +225,25 @@ class Employee(Entity):
                 "Sick Leave/Annual Leave are set automatically when a leave request is approved "
                 "and cannot be chosen manually."
             )
-        is_on_managed_leave = self.current_status in (
-            EmployeeCurrentStatus.SICK_LEAVE,
-            EmployeeCurrentStatus.ANNUAL_LEAVE,
-        )
-        if is_on_managed_leave and new_status not in (
-            EmployeeCurrentStatus.TERMINATED,
-            EmployeeCurrentStatus.RESIGNED,
-        ):
+        # HR Leave Workflow round, item 2 — this used to carve out an
+        # exception allowing a manual override to TERMINATED/RESIGNED while
+        # on a system-managed leave status. That carve-out is removed: ANY
+        # manual Current Status change while on SICK_LEAVE/ANNUAL_LEAVE is
+        # now blocked, unconditionally, with a friendly message — the
+        # frontend never actually exposed a way to trigger the old
+        # exception anyway (see `CurrentStatusControl.tsx`, which already
+        # hides the manual-edit control entirely during managed leave), and
+        # allowing it made "Current Status is managed automatically while
+        # on approved leave" a rule with a silent, easy-to-miss exception.
+        # HR who genuinely needs to terminate/mark-resigned an employee who
+        # is currently on leave should cancel the leave request first (or
+        # wait for it to end), which naturally reverts current_status and
+        # then permits the change through the ordinary path.
+        if self.current_status in (EmployeeCurrentStatus.SICK_LEAVE, EmployeeCurrentStatus.ANNUAL_LEAVE):
             raise InvalidCurrentStatusTransitionError(
                 f"Employee {self.employee_code} is currently on {self.current_status.value}; status is "
-                "managed automatically until the leave ends. It can only be manually changed to "
-                "Terminated or Resigned while on leave."
+                "managed automatically based on their approved leave and cannot be changed manually "
+                "until the leave ends or is cancelled."
             )
         return self._with_current_status(new_status, status_before_leave=None)
 

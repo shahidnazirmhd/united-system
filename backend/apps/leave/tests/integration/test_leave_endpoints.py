@@ -117,9 +117,9 @@ def employee_client(department, zero_permission_role):
     user = UserRecord.objects.create(email="grace.self@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
 
-    manager_record = _create_linked_manager(department, employee_code="EMP-MGR-000099")
+    manager_record = _create_linked_manager(department, employee_code="EMGR-000099")
     employee_record = EmployeeRecord.objects.create(
-        employee_code="EMP-000099",
+        employee_code="E000099",
         user_id=user.id,
         first_name="Grace",
         last_name="Hopper",
@@ -346,7 +346,7 @@ def test_apply_leave_rejects_when_no_manager_assigned(department, annual_leave_t
     user = UserRecord.objects.create(email="no.manager@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-000101",
+        employee_code="E000101",
         user_id=user.id,
         first_name="No",
         last_name="Manager",
@@ -380,7 +380,7 @@ def test_apply_leave_rejects_when_manager_not_linked_to_telegram(
     department, annual_leave_type, zero_permission_role
 ) -> None:
     unlinked_manager = EmployeeRecord.objects.create(
-        employee_code="EMP-MGR-000102",
+        employee_code="EMGR-000102",
         first_name="Unlinked",
         last_name="Manager",
         work_email="unlinked.manager@example.com",
@@ -396,7 +396,7 @@ def test_apply_leave_rejects_when_manager_not_linked_to_telegram(
     )
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-000102",
+        employee_code="E000102",
         user_id=user.id,
         first_name="Has",
         last_name="UnlinkedManager",
@@ -533,7 +533,7 @@ def test_cannot_view_another_employees_leave_request_without_permission(
     user_b = UserRecord.objects.create(email="employee.b@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user_b, role=zero_permission_role)
     EmployeeRecord.objects.create(
-        employee_code="EMP-000100",
+        employee_code="E000100",
         user_id=user_b.id,
         first_name="Bob",
         last_name="Employee",
@@ -802,7 +802,7 @@ def test_leave_is_not_finalized_until_hr_admin_also_approves(
     hasher = DjangoPasswordHasher()
 
     manager, manager_client = _create_linked_manager_with_login(
-        department, employee_code="EMP-MGR-REVIEW-001", zero_permission_role=zero_permission_role
+        department, employee_code="EMGR-REVIEW-001", zero_permission_role=zero_permission_role
     )
 
     applicant_user = UserRecord.objects.create(
@@ -810,7 +810,7 @@ def test_leave_is_not_finalized_until_hr_admin_also_approves(
     )
     UserRoleRecord.objects.create(user=applicant_user, role=zero_permission_role)
     applicant = EmployeeRecord.objects.create(
-        employee_code="EMP-APPLICANT-RVW-01",
+        employee_code="EAPPLICANT-RVW-01",
         user_id=applicant_user.id,
         first_name="Ana",
         last_name="Applicant",
@@ -841,7 +841,7 @@ def test_leave_is_not_finalized_until_hr_admin_also_approves(
     hr_user = UserRecord.objects.create(email="hr.reviewer@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=hr_user, role=hr_role)
     hr_employee = EmployeeRecord.objects.create(
-        employee_code="EMP-HRREVIEW-001",
+        employee_code="EHRREVIEW-001",
         user_id=hr_user.id,
         first_name="Helen",
         last_name="Reviewer",
@@ -962,14 +962,14 @@ def test_level1_approval_can_be_completed_from_the_web_by_a_non_manager_permissi
     person's name/code, not the manager's, once decided."""
     hasher = DjangoPasswordHasher()
 
-    manager = _create_linked_manager(department, employee_code="EMP-MGR-L1WEB-001")
+    manager = _create_linked_manager(department, employee_code="EMGR-L1WEB-001")
 
     applicant_user = UserRecord.objects.create(
         email="applicant.l1web@example.com", password_hash=hasher.hash(_PASSWORD)
     )
     UserRoleRecord.objects.create(user=applicant_user, role=zero_permission_role)
     applicant = EmployeeRecord.objects.create(
-        employee_code="EMP-APP-L1WEB-01",
+        employee_code="EAPP-L1WEB-01",
         user_id=applicant_user.id,
         first_name="Amir",
         last_name="Applicant",
@@ -999,7 +999,7 @@ def test_level1_approval_can_be_completed_from_the_web_by_a_non_manager_permissi
     backup_user = UserRecord.objects.create(email="backup.l1web@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=backup_user, role=level1_role)
     backup_employee = EmployeeRecord.objects.create(
-        employee_code="EMP-BACKUPL1-001",
+        employee_code="EBACKUPL1-001",
         user_id=backup_user.id,
         first_name="Beth",
         last_name="BackupApprover",
@@ -1040,7 +1040,7 @@ def test_level1_approval_can_be_completed_from_the_web_by_a_non_manager_permissi
     assert response.data["data"]["status"] == "pending"  # advances to level 2, doesn't finalize
     assert response.data["data"]["current_level"] == 2
     assert response.data["data"]["steps"][0]["approver_employee_name"] == "Beth BackupApprover"
-    assert response.data["data"]["steps"][0]["approver_employee_code"] == "EMP-BACKUPL1-001"
+    assert response.data["data"]["steps"][0]["approver_employee_code"] == "EBACKUPL1-001"
 
 
 # --- Phase 13 (review requirement): HR-wide "manage" leave request list ----

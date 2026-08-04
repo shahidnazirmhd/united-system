@@ -15,6 +15,7 @@ from apps.leave.application.dtos import (
     ApproveLeaveRequest,
     CancelLeaveRequest,
     CreateLeaveTypeRequest,
+    Level1ApprovalCheckResponse,
     LeaveBalanceAdjustmentResponse,
     LeaveBalanceResponse,
     LeaveRequestResponse,
@@ -107,7 +108,9 @@ class LeaveService:
         return self._requests.cancel_leave(request)
 
     def get_request_detail(self, leave_request_id: uuid.UUID) -> LeaveRequestResponse:
-        return self._requests.get_by_id_enriched(leave_request_id)
+        response = self._requests.get_by_id_enriched(leave_request_id)
+        response = self._enrich_with_employee_display(response)
+        return self._enrich_with_initiator_display(response)
 
     def list_history(self, *, employee_id: uuid.UUID, query: QueryParams) -> PageResult[LeaveRequestResponse]:
         filters = dict(query.filters)
@@ -121,7 +124,10 @@ class LeaveService:
             )
         )
         return PageResult(
-            items=[self._requests.to_enriched_response(r) for r in page_result.items],
+            items=[
+                self._enrich_with_initiator_display(self._requests.to_enriched_response(r))
+                for r in page_result.items
+            ],
             total_count=page_result.total_count,
             page=page_result.page,
             page_size=page_result.page_size,
@@ -146,7 +152,9 @@ class LeaveService:
         )
         return PageResult(
             items=[
-                self._enrich_with_employee_display(self._requests.to_enriched_response(r))
+                self._enrich_with_initiator_display(
+                    self._enrich_with_employee_display(self._requests.to_enriched_response(r))
+                )
                 for r in page_result.items
             ],
             total_count=page_result.total_count,
@@ -167,6 +175,31 @@ class LeaveService:
         full_name, employee_code = display
         return replace(response, employee_name=full_name, employee_code=employee_code)
 
+    def _enrich_with_initiator_display(self, response: LeaveRequestResponse) -> LeaveRequestResponse:
+        """HR Leave Workflow round, item 1 — resolves `initiator_display_name`
+        ("Jane Doe (E0031)") only when `initiated_via == "hr"` AND the
+        initiating HR/Admin account has its own linked Employee record.
+        Reuses the exact same two `EmployeeLookupPort` methods self-service
+        JWT resolution already relies on (`get_employee_id_by_user_id` +
+        `get_employee_display_info`) — no new port method needed. Falls
+        back to leaving `initiator_display_name` as `None` (a generic
+        "System Request" label, no name, is still shown) if the HR account
+        has no linked employee — the same graceful-degradation judgment
+        `_enrich_with_employee_display` above makes when `display is None`.
+        `initiated_via == "telegram"` needs no enrichment here at all: the
+        Leave Details/History UI shows the raw `initiator_telegram_user_id`
+        directly for that case."""
+        if response.initiated_via != "hr" or response.initiator_user_id is None:
+            return response
+        initiator_employee_id = self._employees.get_employee_id_by_user_id(response.initiator_user_id)
+        if initiator_employee_id is None:
+            return response
+        display = self._employees.get_employee_display_info(initiator_employee_id)
+        if display is None:
+            return response
+        full_name, employee_code = display
+        return replace(response, initiator_display_name=f"{full_name} ({employee_code})")
+
     # --- Approval module extension point (not wired to any endpoint) -----
     def approve_leave(self, request: ApproveLeaveRequest) -> LeaveRequestResponse:
         return self._requests.approve(request)
@@ -186,6 +219,24 @@ class LeaveService:
 
     def has_any_active_request(self) -> bool:
         return self._requests.has_any_active_request()
+
+    def has_active_or_upcoming_request_for_employee(self, employee_id: uuid.UUID) -> bool:
+        """HR Leave Workflow round, item 2 — the one public entry point
+        `apps.employees.application.ports.LeaveReferenceCheckPort`'s
+        adapter calls into, through this module's own composition root,
+        same discipline as `has_active_request_covering_date`/
+        `has_any_active_request` above."""
+        return self._requests.has_active_or_upcoming_request_for_employee(employee_id)
+
+    def has_active_or_upcoming_approved_leave_for_employee(self, employee_id: uuid.UUID) -> bool:
+        """Follow-up HR Leave Workflow round, item 1 — the second entry
+        point `LeaveReferenceCheckPort`'s adapter calls into, APPROVED-only
+        (see that repository method's docstring)."""
+        return self._requests.has_active_or_upcoming_approved_leave_for_employee(employee_id)
+
+    # --- HR Leave Workflow round, item 1 --------------------------------
+    def check_level1_approval(self, employee_id: uuid.UUID) -> Level1ApprovalCheckResponse:
+        return self._requests.check_level1_approval(employee_id)
 
     # --- Statistics (Phase 14: Dashboard) --------------------------------
     def get_statistics(self) -> LeaveStatisticsResponse:

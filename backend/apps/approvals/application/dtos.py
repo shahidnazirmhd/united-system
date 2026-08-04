@@ -17,6 +17,18 @@ class CreateApprovalRequestRequest:
     subject_id: uuid.UUID
     requested_by_employee_id: uuid.UUID
     subject_summary: str
+    # Generic engine capability (HR Leave Workflow round): which level the
+    # chain starts at, instead of always level 1. Default 1 preserves every
+    # existing caller's behavior unchanged. The DECISION of whether to start
+    # elsewhere is never made here — it's entirely the calling subject
+    # module's own business rule (e.g. `apps.leave`'s "skip level 1 when HR
+    # applies on behalf of an employee with no notifiable manager"); this
+    # engine only executes whichever level it's told, exactly the same
+    # "engine stays generic, subject module decides" split every other
+    # dynamic-level capability here already follows (see
+    # `apps.leave.infrastructure.leave_approval_chain_resolver`'s module
+    # docstring).
+    start_at_level: int = 1
 
 
 @dataclass(frozen=True)
@@ -82,7 +94,7 @@ class ApprovalStepResponse:
     # employee_id` once decided, else `approver_employee_id` while pending;
     # always `None` for a still-pending permission-based (non-dual-mode)
     # step, since there is no single employee to name yet. Lets the HR
-    # system show "Pending — Jane Doe (EMP-0042)" / "Approved by ..." without
+    # system show "Pending — Jane Doe (E0042)" / "Approved by ..." without
     # this engine ever knowing the approver is "a manager."
     approver_employee_name: str | None
     approver_employee_code: str | None

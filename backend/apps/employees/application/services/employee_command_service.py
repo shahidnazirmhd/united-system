@@ -20,7 +20,7 @@ from apps.employees.application.dtos import (
     UpdateEmployeeRequest,
 )
 from apps.employees.application.mappers import employee_to_response
-from apps.employees.application.ports import UserLookupPort
+from apps.employees.application.ports import LeaveReferenceCheckPort, UserLookupPort
 from apps.employees.domain.entities import Employee
 from apps.employees.domain.enums import EmployeeCurrentStatus, EmploymentType
 from apps.employees.domain.events import (
@@ -33,7 +33,9 @@ from apps.employees.domain.events import (
 from apps.employees.domain.exceptions import (
     DepartmentNotFoundError,
     DuplicateWorkEmailError,
+    EmployeeHasActiveOrUpcomingLeaveRequestsError,
     EmployeeNotFoundError,
+    InvalidCurrentStatusTransitionError,
     UserAlreadyLinkedError,
     UserNotFoundError,
 )
@@ -56,6 +58,7 @@ class EmployeeCommandService(BaseService[Employee]):
         unit_of_work: UnitOfWork,
         event_bus: EventBus,
         user_lookup: UserLookupPort | None = None,
+        leave_reference_check: LeaveReferenceCheckPort | None = None,
     ) -> None:
         super().__init__(repository=employee_repository, unit_of_work=unit_of_work, event_bus=event_bus)
         self._employees = employee_repository
@@ -64,6 +67,13 @@ class EmployeeCommandService(BaseService[Employee]):
         # this service with fakes for the other four args keeps working
         # unchanged — only link_user (Phase 12) actually needs this one.
         self._user_lookup = user_lookup
+        # HR Leave Workflow round, item 2 — optional for the same reason:
+        # only `update_current_status` needs it, and only when the target
+        # status is one of the three "terminal/inactive" values (see that
+        # method below). `None` means the check is silently skipped, same
+        # graceful-degradation judgment call `self._user_lookup` above
+        # already makes.
+        self._leave_reference_check = leave_reference_check
 
     def create_employee(self, request: CreateEmployeeRequest) -> EmployeeResponse:
         employee = Employee(
@@ -180,15 +190,74 @@ class EmployeeCommandService(BaseService[Employee]):
         self._event_bus.publish(EmployeeLinkedToUser(employee_id=saved.id, user_id=request.user_id))
         return employee_to_response(saved)
 
+    # Targets that represent the employee no longer actively working —
+    # HR Leave Workflow round, item 2: changing to any of these must first
+    # be checked against active/upcoming leave requests. WORKING is
+    # deliberately excluded — moving an employee back to WORKING never
+    # orphans a leave request (if anything, it's usually the natural
+    # result of one ending).
+    _STATUSES_REQUIRING_LEAVE_CHECK = (
+        EmployeeCurrentStatus.NOT_JOINED,
+        EmployeeCurrentStatus.RESIGNED,
+        EmployeeCurrentStatus.TERMINATED,
+    )
+
     def update_current_status(self, request: UpdateEmployeeCurrentStatusRequest) -> EmployeeResponse:
         """Round 14 item 8 — HR/Admin manual Current Status update. Delegates
         every transition rule to `Employee.update_current_status_manually`
         (raises `InvalidCurrentStatusTransitionError` for anything not
         allowed) — this method's only job is fetch, delegate, persist,
         matching `activate_employee`/`deactivate_employee`'s identical
-        shape."""
+        shape.
+
+        HR Leave Workflow round, item 2 — before delegating to the entity,
+        also blocks setting NOT_JOINED/RESIGNED/TERMINATED while this
+        employee has any active or upcoming (PENDING/APPROVED) leave
+        request, via the reverse `LeaveReferenceCheckPort`. Checked here
+        (application layer), not on the entity itself: the entity has no
+        way to know about Leave's data at all (Clean Architecture — domain
+        layer never depends on another module), and this is a
+        cross-module referential-integrity check, not a pure state-machine
+        rule (compare `Employee.update_current_status_manually`'s own
+        guards, which only ever look at `self`).
+
+        Follow-up HR Leave Workflow round, item 1 — a SECOND, broader
+        cross-module check runs first, for EVERY target status (not just
+        the three terminal ones above): if this employee has an APPROVED
+        leave request that is active or upcoming, no manual Current Status
+        change is allowed at all. This closes a real gap the entity-level
+        guard alone couldn't: `Employee.update_current_status_manually`
+        only blocks a manual edit once `current_status` has ALREADY
+        flipped to SICK_LEAVE/ANNUAL_LEAVE (i.e. the leave has already
+        started) — an approved leave that hasn't started yet leaves
+        `current_status` at whatever it was before (e.g. WORKING), so
+        without this pre-check HR could still manually overwrite it right
+        up until the leave's automatic sync fires. Same `code`
+        (`invalid_current_status_transition`) the entity's own "managed
+        automatically" guard already uses, since this is conceptually the
+        exact same rule, just enforced a moment earlier for the
+        not-yet-started case the entity alone can't see.
+        """
+        target_status = EmployeeCurrentStatus(request.current_status)
+        if self._leave_reference_check is not None and self._leave_reference_check.has_active_or_upcoming_approved_leave(
+            request.employee_id
+        ):
+            raise InvalidCurrentStatusTransitionError(
+                "This employee has an active or upcoming approved leave request. Current Status is "
+                "managed automatically based on that leave and cannot be changed manually until it ends "
+                "or is cancelled."
+            )
+        if (
+            target_status in self._STATUSES_REQUIRING_LEAVE_CHECK
+            and self._leave_reference_check is not None
+            and self._leave_reference_check.has_active_or_upcoming_leave_request(request.employee_id)
+        ):
+            raise EmployeeHasActiveOrUpcomingLeaveRequestsError(
+                "This employee has an active or upcoming leave request. Cancel or resolve it before "
+                "changing their status to Not Joined, Resigned, or Terminated."
+            )
         existing = self.get_by_id(request.employee_id)
-        updated = existing.update_current_status_manually(EmployeeCurrentStatus(request.current_status))
+        updated = existing.update_current_status_manually(target_status)
         with self._uow:
             saved = self._employees.update(updated)
         return employee_to_response(saved)

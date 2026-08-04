@@ -122,6 +122,40 @@ class LeaveRequest(Entity):
     # in-memory entity that was never persisted (e.g. inside a unit test
     # fake repository that doesn't set it).
     updated_at: datetime | None = None
+    # --- HR Leave Workflow round (skip-level-1 + initiator tracking) -----
+    # Set once, at apply time, by `LeaveRequestService.apply_leave` — never
+    # changed afterwards by approve()/reject()/cancel() (they thread the
+    # existing value through unchanged, same as `working_days`/
+    # `balance_at_application` above). `level1_skipped` is only ever True
+    # when `initiated_via == "hr"` AND the affected employee had no
+    # notifiable manager (see `LeaveValidationService.evaluate_level1_approval`);
+    # self-service (web or Telegram) applications always hard-require a
+    # notifiable manager, so they can never produce a skip.
+    level1_skipped: bool = False
+    # One of `NoManagerAssignedError.code` / `ManagerNotLinkedToTelegramError.code`
+    # (see domain/exceptions.py) when `level1_skipped` is True, else `None`.
+    # Reusing the exception's own `code` string (not re-inventing a new
+    # constant) keeps the "raise" path (self-service) and "evaluate" path
+    # (HR preview + skip) permanently in sync.
+    level1_skip_reason: str | None = None
+    # Which channel actually submitted this request — `"hr"` (an HR/Admin
+    # user applying on behalf of an employee via the web app),
+    # `"telegram"` (the employee themself, via the Telegram bot), or `None`
+    # (ordinary self-service web apply — the common case, no special
+    # initiator display needed). Deliberately not a richer enum: these are
+    # the only two channels the business ever asked to distinguish in the
+    # UI (see requirement: "user name + employee ID and system request" /
+    # "telegram user id + employee id and employee portal request").
+    initiated_via: str | None = None
+    # Populated only when `initiated_via == "hr"` — the `identity.users.id`
+    # of the HR/Admin account that submitted this on the employee's behalf.
+    # Plain UUID, never a ForeignKey, matching `LeaveBalance.employee_id`'s
+    # own "logical reference, no FK" precedent.
+    initiator_user_id: uuid.UUID | None = None
+    # Populated only when `initiated_via == "telegram"` — the Telegram
+    # user id of the employee who applied via the bot. `BigIntegerField`
+    # at the ORM layer, matching `EmployeeRecord.telegram_user_id` exactly.
+    initiator_telegram_user_id: int | None = None
 
     @property
     def total_days(self) -> Decimal:
@@ -153,6 +187,11 @@ class LeaveRequest(Entity):
             cancellation_reason=reason,
             working_days=self.working_days,
             balance_at_application=self.balance_at_application,
+            level1_skipped=self.level1_skipped,
+            level1_skip_reason=self.level1_skip_reason,
+            initiated_via=self.initiated_via,
+            initiator_user_id=self.initiator_user_id,
+            initiator_telegram_user_id=self.initiator_telegram_user_id,
         )
 
     def approve(self, *, approved_by: uuid.UUID, decided_at: datetime, comments: str | None = None) -> "LeaveRequest":
@@ -180,6 +219,11 @@ class LeaveRequest(Entity):
             cancellation_reason=self.cancellation_reason,
             working_days=self.working_days,
             balance_at_application=self.balance_at_application,
+            level1_skipped=self.level1_skipped,
+            level1_skip_reason=self.level1_skip_reason,
+            initiated_via=self.initiated_via,
+            initiator_user_id=self.initiator_user_id,
+            initiator_telegram_user_id=self.initiator_telegram_user_id,
         )
 
     def reject(self, *, decided_at: datetime, comments: str | None = None) -> "LeaveRequest":
@@ -204,6 +248,11 @@ class LeaveRequest(Entity):
             cancellation_reason=self.cancellation_reason,
             working_days=self.working_days,
             balance_at_application=self.balance_at_application,
+            level1_skipped=self.level1_skipped,
+            level1_skip_reason=self.level1_skip_reason,
+            initiated_via=self.initiated_via,
+            initiator_user_id=self.initiator_user_id,
+            initiator_telegram_user_id=self.initiator_telegram_user_id,
         )
 
 

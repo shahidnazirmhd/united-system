@@ -55,6 +55,7 @@ def leave_request_to_response(
     leave_type_name: str | None = None,
     employee_name: str | None = None,
     employee_code: str | None = None,
+    initiator_display_name: str | None = None,
 ) -> LeaveRequestResponse:
     return LeaveRequestResponse(
         id=request.id,
@@ -76,6 +77,16 @@ def leave_request_to_response(
         employee_name=employee_name,
         employee_code=employee_code,
         updated_at=request.updated_at,
+        level1_skipped=request.level1_skipped,
+        level1_skip_reason=request.level1_skip_reason,
+        initiated_via=request.initiated_via,
+        initiator_user_id=request.initiator_user_id,
+        initiator_telegram_user_id=request.initiator_telegram_user_id,
+        # `initiator_display_name` is resolved by `LeaveService` (via
+        # `EmployeeLookupPort`), never looked up by this pure mapper — same
+        # discipline as `employee_name`/`employee_code` above, just passed
+        # straight through rather than defaulted here.
+        initiator_display_name=initiator_display_name,
     )
 
 

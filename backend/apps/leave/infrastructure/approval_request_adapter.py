@@ -27,7 +27,12 @@ SUBJECT_TYPE_LEAVE_REQUEST = "leave.leave_request"
 
 class ApprovalServiceRequestAdapter(ApprovalRequestPort):
     def create_approval_request(
-        self, *, subject_id: uuid.UUID, requested_by_employee_id: uuid.UUID, subject_summary: str
+        self,
+        *,
+        subject_id: uuid.UUID,
+        requested_by_employee_id: uuid.UUID,
+        subject_summary: str,
+        start_at_level: int = 1,
     ) -> None:
         approvals_dependencies.build_approval_service().create_approval_request(
             CreateApprovalRequestRequest(
@@ -35,6 +40,7 @@ class ApprovalServiceRequestAdapter(ApprovalRequestPort):
                 subject_id=subject_id,
                 requested_by_employee_id=requested_by_employee_id,
                 subject_summary=subject_summary,
+                start_at_level=start_at_level,
             )
         )
 

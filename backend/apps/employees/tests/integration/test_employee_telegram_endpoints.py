@@ -63,7 +63,7 @@ def department():
 @pytest.fixture
 def employee(department):
     return EmployeeRecord.objects.create(
-        employee_code="EMP-000001",
+        employee_code="E000001",
         first_name="Grace",
         last_name="Hopper",
         work_email="grace.hopper@example.com",
@@ -176,7 +176,7 @@ def test_request_link_sends_otp_to_both_work_and_personal_email(
     gateway_client, department, recording_email_client
 ) -> None:
     employee_with_personal_email = EmployeeRecord.objects.create(
-        employee_code="EMP-000003",
+        employee_code="E000003",
         first_name="Ada",
         last_name="Lovelace",
         work_email="ada.lovelace@example.com",
@@ -204,7 +204,7 @@ def test_request_link_sends_otp_to_both_work_and_personal_email(
 def test_request_link_rejects_unknown_employee_code(gateway_client, recording_email_client) -> None:
     response = gateway_client.post(
         "/api/v1/employees/telegram/link/request/",
-        {"employee_code": "EMP-999999", "telegram_user_id": 1, "chat_id": 1},
+        {"employee_code": "E999999", "telegram_user_id": 1, "chat_id": 1},
         format="json",
     )
 
@@ -233,7 +233,7 @@ def test_request_link_rejects_telegram_id_already_linked_to_another_employee(
     gateway_client, employee, department, recording_email_client
 ) -> None:
     other_employee = EmployeeRecord.objects.create(
-        employee_code="EMP-000002",
+        employee_code="E000002",
         first_name="Ada",
         last_name="Lovelace",
         work_email="ada.lovelace@example.com",

@@ -79,7 +79,7 @@ def approver_client(department, zero_permission_role):
     user = UserRecord.objects.create(email="approver@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-APPROVER-001",
+        employee_code="EAPPROVER-001",
         user_id=user.id,
         first_name="Ada",
         last_name="Approver",
@@ -120,7 +120,7 @@ def manage_leave_client(department):
         RolePermissionRecord.objects.get_or_create(role=role, permission=permission)
     UserRoleRecord.objects.create(user=user, role=role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-HRMANAGE-001",
+        employee_code="EHRMANAGE-001",
         user_id=user.id,
         first_name="Helen",
         last_name="Reviewer",
@@ -165,7 +165,7 @@ def _open_permission_based_level_2(*, requester_employee_id, permission_code="le
 @pytest.fixture
 def requester_employee(department):
     return EmployeeRecord.objects.create(
-        employee_code="EMP-REQUESTER-001",
+        employee_code="EREQUESTER-001",
         first_name="Rita",
         last_name="Requester",
         work_email="rita.requester@example.com",
@@ -215,7 +215,7 @@ def channel_restricted_approver_client(department, zero_permission_role):
     user = UserRecord.objects.create(email="channel.approver@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-CHANAPPR-001",
+        employee_code="ECHANAPPR-001",
         user_id=user.id,
         first_name="Cara",
         last_name="ChannelApprover",
@@ -242,7 +242,7 @@ def dual_mode_manager_client(department, zero_permission_role):
     user = UserRecord.objects.create(email="dual.manager@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-DUALMGR-001",
+        employee_code="EDUALMGR-001",
         user_id=user.id,
         first_name="Mona",
         last_name="Manager",
@@ -275,7 +275,7 @@ def level1_approve_client(department):
     RolePermissionRecord.objects.get_or_create(role=role, permission=permission)
     UserRoleRecord.objects.create(user=user, role=role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-LVL1APPR-001",
+        employee_code="ELVL1APPR-001",
         user_id=user.id,
         first_name="Leo",
         last_name="Level1Approver",
@@ -305,7 +305,7 @@ def telegram_linked_level1_approve_client(department):
     RolePermissionRecord.objects.get_or_create(role=role, permission=permission)
     UserRoleRecord.objects.create(user=user, role=role)
     employee = EmployeeRecord.objects.create(
-        employee_code="EMP-TGLVL1-001",
+        employee_code="ETGLVL1-001",
         user_id=user.id,
         first_name="Tara",
         last_name="TelegramLevel1",
@@ -350,10 +350,10 @@ def test_my_pending_approvals_lists_only_my_assigned_steps(approver_client, requ
     # response is enriched with the approver's real display name/code
     # (resolved via `EmployeeLookupPort`), not just their opaque id — this
     # is what lets the HR system show "Pending — Ada Approver
-    # (EMP-APPROVER-001)" for a Telegram-only level like Leave's manager
+    # (EAPPROVER-001)" for a Telegram-only level like Leave's manager
     # step, without ever calling the decide endpoint from the web.
     assert item["steps"][0]["approver_employee_name"] == "Ada Approver"
-    assert item["steps"][0]["approver_employee_code"] == "EMP-APPROVER-001"
+    assert item["steps"][0]["approver_employee_code"] == "EAPPROVER-001"
 
 
 def test_my_pending_approvals_is_empty_when_nothing_is_assigned(approver_client) -> None:
@@ -448,7 +448,7 @@ def test_decide_rejects_a_caller_who_is_not_the_assigned_approver(
     user = UserRecord.objects.create(email="not.the.approver@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=user, role=zero_permission_role)
     EmployeeRecord.objects.create(
-        employee_code="EMP-NOTAPPROVER-001",
+        employee_code="ENOTAPPROVER-001",
         user_id=user.id,
         first_name="Not",
         last_name="Approver",
@@ -622,7 +622,7 @@ def test_decide_dual_mode_web_succeeds_for_a_non_manager_holding_the_permission(
     # Approval Workflow Changes v2: the actual decider's name is shown, not
     # the originally-referenced manager's.
     assert response.data["data"]["steps"][0]["approver_employee_name"] == "Leo Level1Approver"
-    assert response.data["data"]["steps"][0]["approver_employee_code"] == "EMP-LVL1APPR-001"
+    assert response.data["data"]["steps"][0]["approver_employee_code"] == "ELVL1APPR-001"
 
 
 def test_decide_dual_mode_telegram_rejects_a_permission_holder_who_is_not_the_manager(
@@ -786,7 +786,7 @@ def test_approval_history_by_subject_hidden_from_an_unrelated_employee(
     unrelated_user = UserRecord.objects.create(email="unrelated@example.com", password_hash=hasher.hash(_PASSWORD))
     UserRoleRecord.objects.create(user=unrelated_user, role=zero_permission_role)
     EmployeeRecord.objects.create(
-        employee_code="EMP-UNRELATED-001",
+        employee_code="EUNRELATED-001",
         user_id=unrelated_user.id,
         first_name="Uma",
         last_name="Unrelated",

@@ -20,6 +20,21 @@ class ApplyLeaveRequest:
     end_date: date
     reason: str | None = None
     created_by: uuid.UUID | None = None
+    # --- HR Leave Workflow round (skip-level-1 + initiator tracking) -----
+    # True only when `interface.views.ApplyLeaveForEmployeeView` (the
+    # HR-on-behalf-of-an-employee endpoint, gated on `leave.manage_leave`)
+    # is the caller — never set by self-service web or Telegram apply.
+    # Governs two things in `LeaveRequestService.apply_leave`: which
+    # validator runs (the non-raising `evaluate_level1_approval` instead of
+    # the raising `validate_manager_available_for_approval`), and whether
+    # `initiated_via` is recorded as `"hr"`.
+    initiated_by_hr: bool = False
+    # Populated only by `ApplyLeaveTelegramView` — the Telegram user id of
+    # the employee applying for themselves via the bot. When set,
+    # `apply_leave` records `initiated_via="telegram"` and this value onto
+    # the created `LeaveRequest`, for the Leave Details/History "Employee
+    # Portal Request" display.
+    initiator_telegram_user_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +100,42 @@ class LeaveRequestResponse:
     # why ordering by this column (via `LeaveService.list_all_requests_admin`)
     # is what backs the Dashboard's "recent leave activity" feed.
     updated_at: datetime | None = None
+    # --- HR Leave Workflow round (skip-level-1 + initiator tracking) -----
+    # Mirrors `LeaveRequest.level1_skipped`/`.level1_skip_reason` verbatim
+    # — see that entity field's own docstring. Surfaced on every read
+    # (Leave Details, Leave History) so the frontend can show "Level 1
+    # approval skipped — no manager assigned" (or the Telegram-not-linked
+    # wording) without a second call.
+    level1_skipped: bool = False
+    level1_skip_reason: str | None = None
+    # Mirrors `LeaveRequest.initiated_via`/`.initiator_user_id`/
+    # `.initiator_telegram_user_id` verbatim.
+    initiated_via: str | None = None
+    initiator_user_id: uuid.UUID | None = None
+    initiator_telegram_user_id: int | None = None
+    # Resolved (never stored) by `LeaveService` — the initiating HR user's
+    # own linked employee's display name, e.g. "Jane Doe (E0031)", only
+    # when `initiated_via == "hr"`. `None` for `"telegram"` (the Leave
+    # Details page instead shows the raw `initiator_telegram_user_id`) and
+    # for ordinary self-service requests (`initiated_via is None`, no
+    # initiator block shown at all). Enriched at the facade layer exactly
+    # like `employee_name`/`employee_code` above — see
+    # `LeaveService._enrich_with_employee_display`'s docstring.
+    initiator_display_name: str | None = None
+
+
+@dataclass(frozen=True)
+class Level1ApprovalCheckResponse:
+    """HR Leave Workflow round, item 1 — backs the new pre-submit
+    confirmation-dialog preview endpoint
+    (`LeaveRequestService.check_level1_approval`), called by the frontend's
+    HR-on-behalf Apply Leave dialog before the user confirms submission.
+    Wraps `LeaveValidationService.evaluate_level1_approval`'s own return
+    shape 1:1 — kept as its own DTO (not reusing a tuple) so the interface
+    layer has a stable, named JSON contract."""
+
+    will_skip_level1: bool
+    skip_reason: str | None = None
 
 
 @dataclass(frozen=True)

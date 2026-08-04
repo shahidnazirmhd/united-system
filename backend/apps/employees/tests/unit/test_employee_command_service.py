@@ -69,7 +69,7 @@ class FakeEmployeeRepository:
         return self.get_by_work_email(work_email) is not None
 
     def next_employee_code(self):
-        code = f"EMP-{self._code_counter:06d}"
+        code = f"E{self._code_counter:06d}"
         self._code_counter += 1
         return code
 
@@ -121,7 +121,7 @@ def _existing_employee(**overrides) -> Employee:
     status = overrides.pop("status", EmployeeStatus.ACTIVE)
     return Employee(
         id=overrides.pop("id", uuid.uuid4()),
-        employee_code=overrides.pop("employee_code", "EMP-000001"),
+        employee_code=overrides.pop("employee_code", "E000001"),
         user_id=overrides.pop("user_id", None),
         profile=EmployeeProfile(first_name="Grace", last_name="Hopper"),
         contact_info=ContactInformation(work_email=Email(overrides.pop("work_email", "grace@example.com"))),
@@ -146,7 +146,7 @@ def test_create_employee_succeeds() -> None:
 
     result = service.create_employee(_create_request(department_id))
 
-    assert result.employee_code == "EMP-000001"
+    assert result.employee_code == "E000001"
     assert result.status == "active"
     assert result.full_name == "Ada Lovelace"
 

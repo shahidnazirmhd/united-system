@@ -80,6 +80,11 @@ def _leave_request_to_domain(record: LeaveRequestRecord) -> LeaveRequest:
         working_days=record.working_days,
         balance_at_application=record.balance_at_application,
         updated_at=record.updated_at,
+        level1_skipped=record.level1_skipped,
+        level1_skip_reason=record.level1_skip_reason,
+        initiated_via=record.initiated_via,
+        initiator_user_id=record.initiator_user_id,
+        initiator_telegram_user_id=record.initiator_telegram_user_id,
     )
 
 
@@ -171,6 +176,11 @@ class DjangoLeaveRequestRepository(DjangoBaseRepository[LeaveRequestRecord, Leav
             "decision_comments": entity.decision_comments,
             "cancelled_at": entity.cancelled_at,
             "cancellation_reason": entity.cancellation_reason,
+            "level1_skipped": entity.level1_skipped,
+            "level1_skip_reason": entity.level1_skip_reason,
+            "initiated_via": entity.initiated_via,
+            "initiator_user_id": entity.initiator_user_id,
+            "initiator_telegram_user_id": entity.initiator_telegram_user_id,
         }
 
     def get_overlapping_for_employee(
@@ -253,6 +263,28 @@ class DjangoLeaveRequestRepository(DjangoBaseRepository[LeaveRequestRecord, Leav
         return self._base_queryset().filter(
             status__in=_ACTIVE_STATUS_VALUES,
             leave_type_id=leave_type_id,
+        ).exists()
+
+    def exists_active_or_upcoming_request_for_employee(self, employee_id: uuid.UUID, *, as_of: date) -> bool:
+        # `end_date__gte=as_of` covers both "in progress right now" (started
+        # on/before `as_of`, ends on/after it) and "entirely in the future"
+        # (starts after `as_of`) in one comparison — a request that ended
+        # before `as_of` is neither, and correctly excluded.
+        return self._base_queryset().filter(
+            employee_id=employee_id,
+            status__in=_ACTIVE_STATUS_VALUES,
+            end_date__gte=as_of,
+        ).exists()
+
+    def exists_active_or_upcoming_approved_request_for_employee(self, employee_id: uuid.UUID, *, as_of: date) -> bool:
+        # Same date comparison as the PENDING/APPROVED version above,
+        # narrowed to APPROVED only — see that abstract method's own
+        # docstring (domain/repositories.py) for why PENDING must never
+        # count here.
+        return self._base_queryset().filter(
+            employee_id=employee_id,
+            status=LeaveRequestStatus.APPROVED.value,
+            end_date__gte=as_of,
         ).exists()
 
     # --- Statistics (Phase 14: Dashboard) --------------------------------

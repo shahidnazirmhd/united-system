@@ -63,6 +63,21 @@ class LeaveRequestResponseSerializer(serializers.Serializer):
     # history already have employee context from the caller).
     employee_name = serializers.CharField(allow_null=True)
     employee_code = serializers.CharField(allow_null=True)
+    # --- HR Leave Workflow round (skip-level-1 + initiator tracking) -----
+    level1_skipped = serializers.BooleanField()
+    level1_skip_reason = serializers.CharField(allow_null=True)
+    initiated_via = serializers.ChoiceField(choices=["hr", "telegram"], allow_null=True)
+    initiator_user_id = serializers.UUIDField(allow_null=True)
+    initiator_telegram_user_id = serializers.IntegerField(allow_null=True)
+    initiator_display_name = serializers.CharField(allow_null=True)
+
+
+class Level1ApprovalCheckResponseSerializer(serializers.Serializer):
+    """HR Leave Workflow round, item 1 — response shape for the pre-submit
+    confirmation-dialog preview endpoint."""
+
+    will_skip_level1 = serializers.BooleanField()
+    skip_reason = serializers.CharField(allow_null=True)
 
 
 class ApplyLeaveSerializer(serializers.Serializer):

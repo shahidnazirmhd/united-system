@@ -1059,7 +1059,7 @@ def test_decided_by_employee_id_and_enrichment_reflect_the_actual_decider() -> N
     )
     authz = FakeAuthorizationPort({permission_holder_id: frozenset({_LEVEL1_PERMISSION})})
     employee_lookup = FakeEmployeeLookupPort(
-        {manager_id: ("Manager Name", "EMP-MGR"), permission_holder_id: ("Backup Approver", "EMP-BKP")}
+        {manager_id: ("Manager Name", "EMGR"), permission_holder_id: ("Backup Approver", "EBKP")}
     )
     service, *_ = _build(
         FakeDualModeChainResolver(manager_id, _LEVEL1_PERMISSION, _WEB),
@@ -1084,7 +1084,7 @@ def test_decided_by_employee_id_and_enrichment_reflect_the_actual_decider() -> N
 
     # Once decided by someone else, the DECIDER's name/code is shown instead.
     assert result.steps[0].approver_employee_name == "Backup Approver"
-    assert result.steps[0].approver_employee_code == "EMP-BKP"
+    assert result.steps[0].approver_employee_code == "EBKP"
 
 
 # --- read enrichment: approver display name/code (Approval Workflow Changes) -
@@ -1096,7 +1096,7 @@ def test_get_detail_enriches_a_for_employee_steps_approver_name_and_code() -> No
     engine never learns the approver is "a manager," it just always shows
     who a single-employee assignment names."""
     approver_id, requester_id, subject_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    employee_lookup = FakeEmployeeLookupPort({approver_id: ("Jane Doe", "EMP-0042")})
+    employee_lookup = FakeEmployeeLookupPort({approver_id: ("Jane Doe", "E0042")})
     service, *_ = _build(FakeSingleLevelChainResolver(approver_id), employee_lookup=employee_lookup)
     created = service.create_approval_request(
         CreateApprovalRequestRequest(
@@ -1108,7 +1108,7 @@ def test_get_detail_enriches_a_for_employee_steps_approver_name_and_code() -> No
     result = service.get_detail(created.id)
 
     assert result.steps[0].approver_employee_name == "Jane Doe"
-    assert result.steps[0].approver_employee_code == "EMP-0042"
+    assert result.steps[0].approver_employee_code == "E0042"
 
 
 def test_get_detail_leaves_a_permission_based_steps_approver_name_and_code_null() -> None:
@@ -1119,7 +1119,7 @@ def test_get_detail_leaves_a_permission_based_steps_approver_name_and_code_null(
     # Deliberately configured to return something for ANY id, proving the
     # service never even calls it for a permission-based step (there is no
     # approver_employee_id to look up).
-    employee_lookup = FakeEmployeeLookupPort({level_1_approver: ("Should Not Appear", "EMP-0000")})
+    employee_lookup = FakeEmployeeLookupPort({level_1_approver: ("Should Not Appear", "E0000")})
     service, *_ = _build(
         FakePermissionLevelChainResolver(level_1_approver, permission_code), employee_lookup=employee_lookup
     )

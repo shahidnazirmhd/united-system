@@ -76,7 +76,7 @@ class EmployeeRepository(BaseRepository[Employee]):
     @abstractmethod
     def next_employee_code(self) -> str:
         """Race-safe, monotonically increasing employee code (e.g.
-        `EMP-000042`) backed by a real Postgres sequence — see
+        `E000042`) backed by a real Postgres sequence — see
         infrastructure/sequence.py for why a row-count-based scheme was
         rejected."""
         raise NotImplementedError

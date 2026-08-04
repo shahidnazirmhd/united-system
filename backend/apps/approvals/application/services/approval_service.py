@@ -148,7 +148,7 @@ class ApprovalService:
             subject_type=request.subject_type,
             subject_id=request.subject_id,
             requested_by_employee_id=request.requested_by_employee_id,
-            level=1,
+            level=request.start_at_level,
         )
         if assignment is None:
             raise NoApproverAvailableError()
@@ -160,12 +160,12 @@ class ApprovalService:
             requested_by_employee_id=request.requested_by_employee_id,
             subject_summary=request.subject_summary,
             status=ApprovalStatus.PENDING,
-            current_level=1,
+            current_level=request.start_at_level,
         )
         step = ApprovalStep(
             id=generate_uuid7(),
             approval_request_id=approval_request.id,
-            level=1,
+            level=request.start_at_level,
             approver_employee_id=assignment.employee_id,
             approver_permission_code=assignment.permission_code,
             restricted_to_channel=assignment.restricted_to_channel,
@@ -189,11 +189,12 @@ class ApprovalService:
             )
         )
         logger.info(
-            "Approval request created: id=%s subject=%s:%s approver=%s (level 1)",
+            "Approval request created: id=%s subject=%s:%s approver=%s (level %s)",
             created_request.id,
             created_request.subject_type,
             created_request.subject_id,
             created_step.approver_employee_id or f"permission:{created_step.approver_permission_code}",
+            created_step.level,
         )
         return self._to_response(created_request, [created_step])
 

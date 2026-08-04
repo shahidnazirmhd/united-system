@@ -102,6 +102,19 @@ class LeaveRequestRecord(BaseModel):
     # --- Cancellation ------------------------------------------------
     cancelled_at = models.DateTimeField(null=True, blank=True)
     cancellation_reason = models.TextField(null=True, blank=True)
+    # --- HR Leave Workflow round (skip-level-1 + initiator tracking) -----
+    # See domain/entities.py LeaveRequest's matching fields for the full
+    # reasoning — these five columns are set once at apply time and never
+    # changed afterwards.
+    level1_skipped = models.BooleanField(default=False)
+    level1_skip_reason = models.CharField(max_length=40, null=True, blank=True)
+    initiated_via = models.CharField(max_length=10, null=True, blank=True)
+    # Logical reference to identity_users.id — plain UUID, never a
+    # ForeignKey, same reasoning as `approved_by` above.
+    initiator_user_id = models.UUIDField(null=True, blank=True)
+    # BigIntegerField to match EmployeeRecord.telegram_user_id exactly —
+    # Telegram user ids can exceed a 32-bit signed int.
+    initiator_telegram_user_id = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "leave_requests"

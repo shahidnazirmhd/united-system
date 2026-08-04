@@ -18,7 +18,7 @@ from __future__ import annotations
 from django.db import connection
 
 SEQUENCE_NAME = "employees_employee_code_seq"
-CODE_PREFIX = "EMP-"
+CODE_PREFIX = "E"
 CODE_DIGITS = 6
 
 
