@@ -29,7 +29,7 @@ from tests.fakes import (
 )
 
 _PROFILE = EmployeeProfile(
-    id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
+    id="1", employee_code="E000123", full_name="Ada Lovelace", job_title="Engineer",
     work_email="ada@example.com", phone_number=None, department_name="Engineering", manager_name=None,
     employment_type="full_time", date_of_joining="2024-01-15", status="active",
     current_status="working",
@@ -93,7 +93,7 @@ async def test_six_digit_text_routes_to_otp_handler_only_when_linking_pending():
 async def test_six_digit_text_completes_linking_when_awaited():
     employees = FakeEmployeesEndpoint(link_status=_UNLINKED_STATUS, verify_result=_PROFILE)
     deps, bot = _deps(employees=employees)
-    await deps.linking.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await deps.linking.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     await route(FakeTelegramUpdate(text="123456"), deps, registry)
 

@@ -9,7 +9,7 @@ from src.formatting.profile_formatter import format_employee_status, format_my_p
 def _profile(**overrides) -> EmployeeProfile:
     defaults = dict(
         id="11111111-1111-1111-1111-111111111111",
-        employee_code="EMP-000123",
+        employee_code="E000123",
         full_name="Ada Lovelace",
         job_title="Software Engineer",
         work_email="ada.lovelace@example.com",
@@ -32,7 +32,7 @@ def test_my_profile_includes_all_known_fields():
     text = format_my_profile(_profile())
 
     assert "Ada Lovelace" in text
-    assert "EMP-000123" in text
+    assert "E000123" in text
     assert "Software Engineer" in text
     assert "Engineering" in text
     assert "Charles Babbage" in text
@@ -63,7 +63,7 @@ def test_my_profile_escapes_markdown_in_name():
 
 def test_employee_status_is_concise_and_shows_status():
     text = format_employee_status(_profile(status="suspended"))
-    assert "EMP-000123" in text
+    assert "E000123" in text
     assert "🔴 Suspended" in text
     # The status view is deliberately terser than the full profile card —
     # it should not repeat department/manager/contact details.

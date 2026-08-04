@@ -68,7 +68,7 @@ class HandlerContext:
     @property
     def command_args(self) -> str:
         """Everything after the first whitespace-separated token of a text
-        command, e.g. "/link EMP-000123" -> "EMP-000123". Empty string if
+        command, e.g. "/link E000123" -> "E000123". Empty string if
         there's no argument."""
         text = self.update.text or ""
         parts = text.strip().split(maxsplit=1)

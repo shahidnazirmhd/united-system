@@ -20,7 +20,7 @@ from tests.fakes import (
 )
 
 _PROFILE = EmployeeProfile(
-    id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
+    id="1", employee_code="E000123", full_name="Ada Lovelace", job_title="Engineer",
     work_email="ada@example.com", phone_number=None, department_name="Engineering", manager_name=None,
     employment_type="full_time", date_of_joining="2024-01-15", status="active",
     current_status="working",
@@ -69,11 +69,11 @@ async def test_link_without_employee_id_prompts_for_one():
 
 async def test_link_starts_registration_and_asks_for_otp():
     employees = FakeEmployeesEndpoint(link_status=_UNLINKED_STATUS)
-    ctx = _context(FakeTelegramUpdate(text="/link EMP-000123"), employees=employees)
+    ctx = _context(FakeTelegramUpdate(text="/link E000123"), employees=employees)
 
     await link_handler.handle_link(ctx)
 
-    assert employees.link_requests[0]["employee_code"] == "EMP-000123"
+    assert employees.link_requests[0]["employee_code"] == "E000123"
     assert "6-digit code" in ctx.bot.sent_messages[0]["text"]
 
 
@@ -82,7 +82,7 @@ async def test_link_shows_friendly_message_for_unknown_employee():
         link_status=_UNLINKED_STATUS,
         raise_on_request_link=make_hrms_error("employee_not_found", status_code=404),
     )
-    ctx = _context(FakeTelegramUpdate(text="/link EMP-999999"), employees=employees)
+    ctx = _context(FakeTelegramUpdate(text="/link E999999"), employees=employees)
 
     await link_handler.handle_link(ctx)
 
@@ -91,7 +91,7 @@ async def test_link_shows_friendly_message_for_unknown_employee():
 
 async def test_link_refuses_when_already_linked():
     employees = FakeEmployeesEndpoint(link_status=_LINKED_STATUS)
-    ctx = _context(FakeTelegramUpdate(text="/link EMP-000123"), employees=employees)
+    ctx = _context(FakeTelegramUpdate(text="/link E000123"), employees=employees)
 
     await link_handler.handle_link(ctx)
 
@@ -101,7 +101,7 @@ async def test_link_refuses_when_already_linked():
 async def test_otp_reply_completes_linking_and_shows_menu():
     employees = FakeEmployeesEndpoint(link_status=_UNLINKED_STATUS, verify_result=_PROFILE)
     ctx = _context(FakeTelegramUpdate(text="123456"), employees=employees)
-    await ctx.linking.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username="ada")
+    await ctx.linking.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username="ada")
 
     await link_handler.handle_otp_reply(ctx)
 
@@ -117,7 +117,7 @@ async def test_otp_reply_shows_friendly_message_for_wrong_code():
         raise_on_verify_link=make_hrms_error("invalid_employee_link_otp", status_code=422),
     )
     ctx = _context(FakeTelegramUpdate(text="000000"), employees=employees)
-    await ctx.linking.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await ctx.linking.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     await link_handler.handle_otp_reply(ctx)
 

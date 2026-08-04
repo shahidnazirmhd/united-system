@@ -67,6 +67,21 @@ class LeaveRequest:
     decision_comments: str | None
     cancelled_at: str | None
     cancellation_reason: str | None
+    # --- HR Leave Workflow round (skip-level-1 + initiator tracking) -----
+    # Mirrors backend/apps/leave/interface/serializers.py's
+    # LeaveRequestResponseSerializer fields exactly. `level1_skip_reason` is
+    # a raw backend code (e.g. "no_manager_assigned") — formatting/
+    # leave_formatter.py owns turning it into display text, this file only
+    # deserializes. Defaulted (unlike every field above) so every existing
+    # test fixture that constructs `LeaveRequest(...)` positionally/by
+    # keyword without knowing about this round's fields keeps working
+    # unchanged — `_parse_leave_request` below still populates real values
+    # from the wire response regardless of these defaults.
+    level1_skipped: bool = False
+    level1_skip_reason: str | None = None
+    initiated_via: str | None = None
+    initiator_telegram_user_id: int | None = None
+    initiator_display_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +136,11 @@ def _parse_leave_request(data: dict) -> LeaveRequest:
         decision_comments=data.get("decision_comments"),
         cancelled_at=data.get("cancelled_at"),
         cancellation_reason=data.get("cancellation_reason"),
+        level1_skipped=data.get("level1_skipped", False),
+        level1_skip_reason=data.get("level1_skip_reason"),
+        initiated_via=data.get("initiated_via"),
+        initiator_telegram_user_id=data.get("initiator_telegram_user_id"),
+        initiator_display_name=data.get("initiator_display_name"),
     )
 
 

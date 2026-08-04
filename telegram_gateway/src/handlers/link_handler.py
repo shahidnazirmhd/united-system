@@ -36,7 +36,7 @@ async def handle_link(ctx: HandlerContext) -> None:
     employee_code = ctx.command_args
     if not employee_code:
         await ctx.reply(
-            "Please include your Employee ID, e.g. `/link EMP-000123`."
+            "Please include your Employee ID, e.g. `/link E000123`."
         )
         return
 

@@ -23,7 +23,7 @@ from tests.fakes import (
 )
 
 _PROFILE = EmployeeProfile(
-    id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
+    id="1", employee_code="E000123", full_name="Ada Lovelace", job_title="Engineer",
     work_email="ada@example.com", phone_number=None, department_name="Engineering", manager_name=None,
     employment_type="full_time", date_of_joining="2024-01-15", status="active",
     current_status="working",

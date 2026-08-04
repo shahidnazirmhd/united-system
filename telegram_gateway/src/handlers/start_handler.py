@@ -22,7 +22,7 @@ _WELCOME_LINKED = (
 _WELCOME_UNLINKED = (
     "👋 Welcome to the United HRMS Bot!\n\n"
     "To get started, link your Telegram account to your employee record:\n"
-    "Send `/link <your employee ID>` — for example: `/link EMP-000123`\n\n"
+    "Send `/link <your employee ID>` — for example: `/link E000123`\n\n"
     "Your HR team can provide your employee ID if you don't have it handy."
 )
 

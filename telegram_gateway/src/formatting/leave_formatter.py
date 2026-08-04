@@ -21,9 +21,23 @@ _REQUEST_STATUS_LABELS = {
     "cancelled": "⚫ Cancelled",
 }
 
+# HR Leave Workflow round, item 1 — mirrors
+# frontend/src/modules/leave/types/leave.types.ts's LEVEL1_SKIP_REASON_LABELS
+# exactly, same raw backend codes as display text.
+_LEVEL1_SKIP_REASON_LABELS = {
+    "no_manager_assigned": "no manager assigned",
+    "manager_not_linked_to_telegram": "manager has not linked their Telegram account",
+}
+
 
 def _status_label(status: str) -> str:
     return _REQUEST_STATUS_LABELS.get(status, status.replace("_", " ").title())
+
+
+def _level1_skip_reason_label(reason: str | None) -> str:
+    if reason is None:
+        return ""
+    return _LEVEL1_SKIP_REASON_LABELS.get(reason, reason.replace("_", " "))
 
 
 def format_leave_balances(balances: list[LeaveBalance]) -> str:
@@ -91,6 +105,18 @@ def format_leave_request_detail(request: LeaveRequest) -> str:
     if request.status == "cancelled":
         lines.append(f"🚫 Cancelled: {field_or_placeholder(request.cancelled_at)}")
         lines.append(f"💬 Reason: {field_or_placeholder(request.cancellation_reason)}")
+    # HR Leave Workflow round, item 1 — only ever true for an HR-on-behalf
+    # application (self-service always has a real level-1 manager approver
+    # by the time it's created), but this view is reachable by the
+    # employee themself viewing their own request, so it's shown here too.
+    if request.level1_skipped:
+        reason_label = _level1_skip_reason_label(request.level1_skip_reason)
+        lines.append(
+            f"⚠️ Level 1 approval skipped ({reason_label}) — sent directly to Level 2 (HR/Admin) approval."
+        )
+    if request.initiated_via == "hr":
+        who = request.initiator_display_name or "HR/Admin"
+        lines.append(f"👤 Requested by: {who} · System Request")
     return "\n".join(lines)
 
 

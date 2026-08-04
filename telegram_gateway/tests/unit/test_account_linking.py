@@ -17,7 +17,7 @@ from src.errors import LinkingInProgressConflictError, NoLinkingInProgressError
 from tests.fakes import FakeEmployeesEndpoint, FakeRedis, make_hrms_error
 
 _PROFILE = EmployeeProfile(
-    id="1", employee_code="EMP-000123", full_name="Ada Lovelace", job_title="Engineer",
+    id="1", employee_code="E000123", full_name="Ada Lovelace", job_title="Engineer",
     work_email="ada@example.com", phone_number=None, department_name="Engineering", manager_name=None,
     employment_type="full_time", date_of_joining="2024-01-15", status="active",
     current_status="working",
@@ -35,11 +35,11 @@ async def test_start_linking_calls_backend_and_records_pending_state():
     service = _service(employees=employees, redis=redis)
 
     await service.start_linking(
-        employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username="ada"
+        employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username="ada"
     )
 
     assert employees.link_requests == [
-        {"employee_code": "EMP-000123", "telegram_user_id": 42, "chat_id": 42, "telegram_username": "ada"}
+        {"employee_code": "E000123", "telegram_user_id": 42, "chat_id": 42, "telegram_username": "ada"}
     ]
     assert await service.is_awaiting_otp(42) is True
 
@@ -49,7 +49,7 @@ async def test_start_linking_propagates_backend_errors_unmodified():
     service = _service(employees=employees)
 
     with pytest.raises(Exception) as exc_info:
-        await service.start_linking(employee_code="EMP-999999", telegram_user_id=42, chat_id=42, telegram_username=None)
+        await service.start_linking(employee_code="E999999", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     assert exc_info.value.code == "employee_not_found"
     assert await service.is_awaiting_otp(42) is False  # a failed request must not leave stale pending state
@@ -57,10 +57,10 @@ async def test_start_linking_propagates_backend_errors_unmodified():
 
 async def test_start_linking_rejects_a_second_concurrent_attempt():
     service = _service()
-    await service.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await service.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     with pytest.raises(LinkingInProgressConflictError):
-        await service.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+        await service.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
 
 async def test_complete_linking_without_a_pending_request_raises():
@@ -73,7 +73,7 @@ async def test_complete_linking_without_a_pending_request_raises():
 async def test_complete_linking_returns_profile_and_clears_pending_state_on_success():
     employees = FakeEmployeesEndpoint(verify_result=_PROFILE)
     service = _service(employees=employees)
-    await service.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await service.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     result = await service.complete_linking(telegram_user_id=42, chat_id=42, otp="123456", telegram_username="ada")
 
@@ -84,7 +84,7 @@ async def test_complete_linking_returns_profile_and_clears_pending_state_on_succ
 async def test_complete_linking_leaves_pending_state_on_wrong_otp_so_the_employee_can_retry():
     employees = FakeEmployeesEndpoint(raise_on_verify_link=make_hrms_error("invalid_employee_link_otp", status_code=422))
     service = _service(employees=employees)
-    await service.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await service.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     with pytest.raises(Exception) as exc_info:
         await service.complete_linking(telegram_user_id=42, chat_id=42, otp="000000", telegram_username=None)
@@ -103,7 +103,7 @@ async def test_complete_linking_clears_pending_state_on_too_many_attempts_so_lin
         raise_on_verify_link=make_hrms_error("too_many_otp_attempts", status_code=422)
     )
     service = _service(employees=employees)
-    await service.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await service.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     with pytest.raises(Exception) as exc_info:
         await service.complete_linking(telegram_user_id=42, chat_id=42, otp="000000", telegram_username=None)
@@ -115,7 +115,7 @@ async def test_complete_linking_clears_pending_state_on_too_many_attempts_so_lin
 async def test_unlink_calls_backend_and_clears_pending_state():
     employees = FakeEmployeesEndpoint()
     service = _service(employees=employees)
-    await service.start_linking(employee_code="EMP-000123", telegram_user_id=42, chat_id=42, telegram_username=None)
+    await service.start_linking(employee_code="E000123", telegram_user_id=42, chat_id=42, telegram_username=None)
 
     await service.unlink(telegram_user_id=42)
 
